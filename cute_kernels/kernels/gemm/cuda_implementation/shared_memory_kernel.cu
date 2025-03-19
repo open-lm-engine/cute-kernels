@@ -88,10 +88,11 @@ void shared_memory_gemm_cuda(const torch::Tensor &A,
                              const uint32 &BLOCK_SIZE) {
     CHECK_CUDA_TENSOR(A);
     CHECK_CUDA_TENSOR(B);
+    CHECK_CUDA_TENSOR(output);
+
     if (C.has_value()) {
         CHECK_CUDA_TENSOR(C.value());
     }
-    CHECK_CUDA_TENSOR(output);
 
     CHECK_VALID_THREAD_BLOCK(BLOCK_SIZE);
 
