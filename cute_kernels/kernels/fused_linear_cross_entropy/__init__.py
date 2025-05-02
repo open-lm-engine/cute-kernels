@@ -1,9 +1,8 @@
 import torch
 
-from ...cutotune import CutoTuneParameter
 from ...math import ceil_divide, get_next_power_of_2
 from ...utils import ensure_contiguous
-from ..cross_entropy import cross_entropy_forward_backward_triton
+from ..cross_entropy import cross_entropy_forward_backward_triton_kernel
 from .torch_implementation import fused_linear_cross_entropy_torch
 
 
@@ -16,7 +15,7 @@ class _FusedLinearCrossEntropy_Cute(torch.autograd.Function):
         weight: torch.Tensor,
         labels: torch.Tensor,
         reduction: str,
-        logits_multiplier: float,
+        logits_multiplier: float | None,
         BLOCK_SIZE_B: int,
         BLOCK_SIZE_V: int,
     ) -> torch.Tensor:
@@ -27,10 +26,10 @@ class _FusedLinearCrossEntropy_Cute(torch.autograd.Function):
         assert x.size(-1) == weight.size(-1)
 
         batch_size, hidden_size = x.size()
-        vocab_size = weight.size(0)
+        V = weight.size(0)
 
         # NOTE chunking is copied from liger kernel
-        memory_increase_factor = ceil_divide(vocab_size, hidden_size)
+        memory_increase_factor = ceil_divide(V, hidden_size)
         # chunk_size needed to reduce memory increase back to 1
         chunk_size = get_next_power_of_2(ceil_divide(batch_size, memory_increase_factor))
         num_chunks = ceil_divide(batch_size, chunk_size)
@@ -50,16 +49,22 @@ class _FusedLinearCrossEntropy_Cute(torch.autograd.Function):
             _logits_grad = torch.empty_like(_logits)
             _labels = labels[start:end].contiguous()
 
-            cross_entropy_forward_backward_triton(
-                x=_logits,
-                labels=_labels,
-                loss=loss,
-                x_grad=_logits_grad,
-                logits_multiplier=logits_multiplier,
-                BLOCK_SIZE_B=BLOCK_SIZE_B,
-                BLOCK_SIZE_V=BLOCK_SIZE_V,
-                reduction="sum",
-            )
+            B = _logits.size(0)
+
+            with torch.cuda.device(_logits.device):
+                cross_entropy_forward_backward_triton_kernel[ceil_divide(B, BLOCK_SIZE_B),](
+                    x_ptr=_logits,
+                    labels_ptr=_labels,
+                    loss_ptr=loss,
+                    x_grad_ptr=_logits_grad,
+                    has_logits_multiplier=logits_multiplier not in [None, 1],
+                    logits_multiplier=logits_multiplier,
+                    B=B,
+                    V=V,
+                    BLOCK_SIZE_B=BLOCK_SIZE_B,
+                    BLOCK_SIZE_V=BLOCK_SIZE_V,
+                    reduction="sum",
+                )
 
             x_grad[start:end] = _logits_grad @ weight
             torch.addmm(weight_grad, _logits_grad.T, _x, alpha=1, beta=1, out=weight_grad)
@@ -88,16 +93,27 @@ def fused_linear_cross_entropy_cute(
     weight: torch.Tensor,
     labels: torch.Tensor,
     reduction: str = "mean",
-    logits_multiplier: float = 1,
-    BLOCK_SIZE_B: int = CutoTuneParameter(),
-    BLOCK_SIZE_V: int = CutoTuneParameter(),
+    logits_multiplier: float | None = None,
+    *,
+    BLOCK_SIZE_B: int = 4,
+    BLOCK_SIZE_V: int = 256,
 ) -> torch.Tensor:
+    """compute cross entropy loss without materializing the full output logits matrix
+
+    Args:
+        x (torch.Tensor): logits
+        weight (torch.Tensor): vocab weight
+        labels (torch.Tensor): labels
+        reduction (str, optional): reduction should be either sum or mean. Defaults to "mean".
+        logits_multiplier (float | None, optional): logits multiplier pre-multiplies logits, None implies 1.
+            Defaults to None.
+        BLOCK_SIZE_B (int, optional): block size along the token dimension. Defaults to 4.
+        BLOCK_SIZE_V (int, optional): block size along the vocabulary dimension. Defaults to 256.
+
+    Returns:
+        torch.Tensor: loss
+    """
+
     return _FusedLinearCrossEntropy_Cute.apply(
-        x,
-        weight,
-        labels,
-        reduction,
-        logits_multiplier,
-        BLOCK_SIZE_B,
-        BLOCK_SIZE_V,
+        x, weight, labels, reduction, logits_multiplier, BLOCK_SIZE_B, BLOCK_SIZE_V
     )

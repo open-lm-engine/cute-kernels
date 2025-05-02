@@ -1,6 +1,6 @@
 import torch
 
-from ...cutotune import CutoTuneConfig, CutoTuneParameter, cutotune
+from ...math import ceil_divide
 from ...utils import ensure_contiguous, get_num_elements_and_hidden_size
 from .cuda_implementation import (
     cutlass_gemm_cuda,
@@ -9,23 +9,10 @@ from .cuda_implementation import (
     shared_memory_gemm_cuda,
 )
 from .torch_implementation import gemm_torch
-from .triton_implementation import gemm_triton
+from .triton_implementation import gemm_triton_kernel
 
 
 @ensure_contiguous
-@cutotune(
-    configs=[
-        CutoTuneConfig(dict(kernel_backend="triton")),
-        CutoTuneConfig(dict(kernel_backend="naive_cuda")),
-        CutoTuneConfig(
-            dict(kernel_backend="shared_memory_cuda"),
-            condition=lambda **kwargs: not kwargs.get("is_A_transposed", False)
-            and not kwargs.get("is_B_transposed", False),
-        ),
-    ],
-    default_config=CutoTuneConfig(dict(kernel_backend="triton")),
-    triggers={"A.dtype", "is_A_transposed", "is_B_transposed"},
-)
 def gemm_cute(
     A: torch.Tensor,
     B: torch.Tensor,
@@ -34,12 +21,28 @@ def gemm_cute(
     is_B_transposed: bool = False,
     alpha: float = 1,
     beta: float = 1,
-    use_tf32: bool = True,
-    kernel_backend: str = CutoTuneParameter(),
-    BLOCK_SIZE_M: int = CutoTuneParameter(),
-    BLOCK_SIZE_K: int = CutoTuneParameter(),
-    BLOCK_SIZE_N: int = CutoTuneParameter(),
+    *,
+    kernel_backend: str = "triton",
 ) -> torch.Tensor:
+    """computes `alpha` * (`A` @ `B`) + `beta` * `C`
+
+    Args:
+        A (torch.Tensor): `A` matrix
+        B (torch.Tensor): `B` matrix
+        C (torch.Tensor | None): `C` matrix, function returns `A` @ `B` if C is None
+        is_A_transposed (bool, optional): whether A has shape K x M. Defaults to False.
+        is_B_transposed (bool, optional): whether B has shape N x K. Defaults to False.
+        alpha (float, optional): alpha. Defaults to 1.
+        beta (float, optional): beta. Defaults to 1.
+        kernel_backend (str, optional): kernel backend to use. Defaults to triton.
+
+    Raises:
+        ValueError: if unexpected `kernel_backend` is passed
+
+    Returns:
+        torch.Tensor: output tensor
+    """
+
     if is_A_transposed:
         assert A.dim() == 2, "only 2 dimensional a tensor is supported when a is transposed"
         K, M = A.size()
@@ -59,10 +62,6 @@ def gemm_cute(
         assert C is not None
 
     if kernel_backend == "cutlass_tensorcore_mma_gemm_cuda":
-        assert isinstance(BLOCK_SIZE_M, CutoTuneParameter)
-        assert isinstance(BLOCK_SIZE_K, CutoTuneParameter)
-        assert isinstance(BLOCK_SIZE_N, CutoTuneParameter)
-
         cutlass_tensorcore_mma_gemm_cuda(
             A=A,
             B=B,
@@ -77,10 +76,6 @@ def gemm_cute(
             N=N,
         )
     elif kernel_backend == "cutlass":
-        assert isinstance(BLOCK_SIZE_M, CutoTuneParameter)
-        assert isinstance(BLOCK_SIZE_K, CutoTuneParameter)
-        assert isinstance(BLOCK_SIZE_N, CutoTuneParameter)
-
         cutlass_gemm_cuda(
             A=A,
             B=B,
@@ -95,12 +90,7 @@ def gemm_cute(
             N=N,
         )
     elif kernel_backend == "shared_memory_cuda":
-        if (
-            not isinstance(BLOCK_SIZE_M, CutoTuneParameter)
-            or not isinstance(BLOCK_SIZE_K, CutoTuneParameter)
-            or not isinstance(BLOCK_SIZE_N, CutoTuneParameter)
-        ):
-            assert BLOCK_SIZE_M == BLOCK_SIZE_K == BLOCK_SIZE_N
+        BLOCK_SIZE = 32
 
         shared_memory_gemm_cuda(
             A=A,
@@ -114,9 +104,12 @@ def gemm_cute(
             M=M,
             K=K,
             N=N,
-            BLOCK_SIZE=BLOCK_SIZE_M,
+            BLOCK_SIZE=BLOCK_SIZE,
         )
     elif kernel_backend == "naive_cuda":
+        BLOCK_SIZE_M = 16
+        BLOCK_SIZE_N = 16
+
         naive_gemm_cuda(
             A=A,
             B=B,
@@ -133,25 +126,31 @@ def gemm_cute(
             BLOCK_SIZE_N=BLOCK_SIZE_N,
         )
     elif kernel_backend == "triton":
-        gemm_triton(
-            A=A,
-            B=B,
-            C=C,
-            output=output,
-            is_A_transposed=is_A_transposed,
-            is_B_transposed=is_B_transposed,
-            alpha=alpha,
-            beta=beta,
-            M=M,
-            K=K,
-            N=N,
-            use_tf32=use_tf32,
-            BLOCK_SIZE_M=BLOCK_SIZE_M,
-            BLOCK_SIZE_K=BLOCK_SIZE_K,
-            BLOCK_SIZE_N=BLOCK_SIZE_N,
-            num_warps=CutoTuneParameter(),
-            num_stages=CutoTuneParameter(),
-        )
+        BLOCK_SIZE_M = 128
+        BLOCK_SIZE_K = 64
+        BLOCK_SIZE_N = 128
+        NUM_WARPS = 8
+        NUM_STAGES = 2
+
+        with torch.cuda.device(A.device):
+            gemm_triton_kernel[ceil_divide(M, BLOCK_SIZE_M) * ceil_divide(N, BLOCK_SIZE_N),](
+                A_ptr=A,
+                B_ptr=B,
+                C_ptr=C,
+                output_ptr=output,
+                alpha=alpha,
+                beta=beta,
+                is_A_transposed=is_A_transposed,
+                is_B_transposed=is_B_transposed,
+                M=M,
+                K=K,
+                N=N,
+                BLOCK_SIZE_M=BLOCK_SIZE_M,
+                BLOCK_SIZE_K=BLOCK_SIZE_K,
+                BLOCK_SIZE_N=BLOCK_SIZE_N,
+                num_warps=NUM_WARPS,
+                num_stages=NUM_STAGES,
+            )
     else:
         raise ValueError(f"unexpected kernel_backend ({kernel_backend})")
 

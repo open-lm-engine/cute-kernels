@@ -1,9 +1,9 @@
 import torch
 
-from ...cutotune import CutoTuneParameter
-from ...utils import ensure_contiguous
+from ...math import ceil_divide
+from ...utils import ensure_contiguous, get_num_elements_and_hidden_size
 from .torch_implementation import cross_entropy_torch
-from .triton_implementation import cross_entropy_forward_backward_triton
+from .triton_implementation import cross_entropy_forward_backward_triton_kernel
 
 
 class _CrossEntropy_Cute(torch.autograd.Function):
@@ -14,33 +14,36 @@ class _CrossEntropy_Cute(torch.autograd.Function):
         x: torch.Tensor,
         labels: torch.Tensor,
         reduction: str,
-        logits_multiplier: float,
+        logits_multiplier: float | None,
         BLOCK_SIZE_B: int,
         BLOCK_SIZE_V: int,
     ) -> torch.Tensor:
         assert reduction in ["sum", "mean"]
         assert x.dim() == 2, "x should be 2 dimensional"
         assert labels.dim() == 1, "labels should be 1 dimensional"
-        assert x.size(0) == labels.size(0), "x and labels have different number of elements along dim 0"
+        assert (
+            labels.size(0) == get_num_elements_and_hidden_size(x)[0]
+        ), "x and labels have different number of elements along batch dimension"
 
         loss = torch.tensor(0, device=x.device, dtype=torch.float32)
         x_grad = torch.empty_like(x)
 
-        cross_entropy_forward_backward_triton(
-            x=x,
-            labels=labels,
-            loss=loss,
-            x_grad=x_grad,
-            logits_multiplier=logits_multiplier,
-            BLOCK_SIZE_B=BLOCK_SIZE_B,
-            BLOCK_SIZE_V=BLOCK_SIZE_V,
-            reduction=reduction,
-        )
+        B, V = x.size()
 
-        # Meta is on fucking drugs
-        # torch compiler doesn't work without this :/
-        if torch.compiler.is_compiling():
-            x_grad += 0
+        with torch.cuda.device(x.device):
+            cross_entropy_forward_backward_triton_kernel[ceil_divide(B, BLOCK_SIZE_B),](
+                x_ptr=x,
+                labels_ptr=labels,
+                loss_ptr=loss,
+                x_grad_ptr=x_grad,
+                has_logits_multiplier=logits_multiplier not in [None, 1],
+                logits_multiplier=logits_multiplier,
+                B=B,
+                V=V,
+                BLOCK_SIZE_B=BLOCK_SIZE_B,
+                BLOCK_SIZE_V=BLOCK_SIZE_V,
+                reduction=reduction,
+            )
 
         ctx.save_for_backward(x_grad)
 
@@ -58,15 +61,24 @@ def cross_entropy_cute(
     x: torch.Tensor,
     labels: torch.Tensor,
     reduction: str = "mean",
-    logits_multiplier: float = 1,
-    BLOCK_SIZE_B: int = CutoTuneParameter(),
-    BLOCK_SIZE_V: int = CutoTuneParameter(),
+    logits_multiplier: float | None = None,
+    *,
+    BLOCK_SIZE_B: int = 4,
+    BLOCK_SIZE_V: int = 256,
 ) -> torch.Tensor:
-    return _CrossEntropy_Cute.apply(
-        x,
-        labels,
-        reduction,
-        logits_multiplier,
-        BLOCK_SIZE_B,
-        BLOCK_SIZE_V,
-    )
+    """compute cross entropy loss
+
+    Args:
+        x (torch.Tensor): logits
+        labels (torch.Tensor): labels
+        reduction (str, optional): reduction should be either sum or mean. Defaults to "mean".
+        logits_multiplier (float | None, optional): logits multiplier pre-multiplies logits, None implies 1.
+            Defaults to None.
+        BLOCK_SIZE_B (int, optional): block size along the token dimension. Defaults to 4.
+        BLOCK_SIZE_V (int, optional): block size along the vocabulary dimension. Defaults to 256.
+
+    Returns:
+        torch.Tensor: loss
+    """
+
+    return _CrossEntropy_Cute.apply(x, labels, reduction, logits_multiplier, BLOCK_SIZE_B, BLOCK_SIZE_V)

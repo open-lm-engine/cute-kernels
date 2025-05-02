@@ -1,13 +1,6 @@
 from .cute_inductor import CuteInductor
-from .cutotune import (
-    CutoTuneConfig,
-    CutoTuneParameter,
-    cutotune,
-    get_cartesian_product_cutotune_configs,
-    get_cutotune_cache,
-    save_cutotune_cache,
-)
 from .inductor import init_inductor
+from .kernel_backend import KernelBackend
 from .kernels import (
     MoE_Torch,
     MoE_Triton,
@@ -29,14 +22,20 @@ from .kernels import (
     gemm_torch,
     linear_cute,
     linear_torch,
+    pack_sequence_cute,
+    pack_sequence_torch,
     rmsnorm_cute,
     rmsnorm_torch,
+    rnn_cute,
+    rnn_torch,
     softmax_cute,
     softmax_torch,
     swiglu_cute,
     swiglu_torch,
     swiglu_unchunked_cute,
     swiglu_unchunked_torch,
+    unpack_sequence_cute,
+    unpack_sequence_torch,
 )
 from .math import ceil_divide, get_powers_of_2
 from .tensor import CuteTensor

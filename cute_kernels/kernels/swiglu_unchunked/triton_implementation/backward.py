@@ -1,17 +1,11 @@
-import torch
 import triton
 import triton.language as tl
 
-from ....constants import LIBRARY_NAME
-from ....math import ceil_divide
-from ....utils import cute_op, get_num_elements_and_hidden_size
-
-
-_KERNEL_NAME = "swiglu_unchunked_backward_triton"
+from ....triton_math import sigmoid
 
 
 @triton.jit
-def _swiglu_unchunked_backward_triton_kernel(
+def swiglu_unchunked_backward_triton_kernel(
     x_ptr, output_grad_ptr, x_grad_ptr, B, H, BLOCK_SIZE_B: tl.constexpr, BLOCK_SIZE_H: tl.constexpr
 ):
     pid_b = tl.program_id(axis=0)
@@ -35,7 +29,7 @@ def _swiglu_unchunked_backward_triton_kernel(
     output_grad_ptrs = output_grad_ptr + indices_b[:, None] * half_H + indices_h[None, :]
     output_grad = tl.load(output_grad_ptrs, mask=mask_bh)
 
-    gate_sigmoid = tl.sigmoid(gate)
+    gate_sigmoid = sigmoid(gate)
     gate_silu = gate * gate_sigmoid
 
     gate_grad = output_grad * up * (gate_sigmoid + gate_silu * (1 - gate_sigmoid))
@@ -46,25 +40,3 @@ def _swiglu_unchunked_backward_triton_kernel(
 
     gate_grad_ptrs = up_grad_ptrs + (H >> 1)
     tl.store(gate_grad_ptrs, gate_grad, mask=mask_bh)
-
-
-@cute_op(f"{LIBRARY_NAME}::{_KERNEL_NAME}", mutates_args={"x_grad"})
-def swiglu_unchunked_backward_triton(
-    x: torch.Tensor,
-    output_grad: torch.Tensor,
-    x_grad: torch.Tensor,
-    BLOCK_SIZE_B: int,
-    BLOCK_SIZE_H: int,
-) -> None:
-    B, H = get_num_elements_and_hidden_size(x)
-
-    with torch.device(x.device):
-        _swiglu_unchunked_backward_triton_kernel[(ceil_divide(B, BLOCK_SIZE_B), ceil_divide(H, BLOCK_SIZE_H))](
-            x_ptr=x,
-            output_grad_ptr=output_grad,
-            x_grad_ptr=x_grad,
-            B=B,
-            H=H,
-            BLOCK_SIZE_B=BLOCK_SIZE_B,
-            BLOCK_SIZE_H=BLOCK_SIZE_H,
-        )

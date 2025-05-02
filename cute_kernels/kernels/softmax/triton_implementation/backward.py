@@ -2,13 +2,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ....constants import LIBRARY_NAME, MAX_TRITON_BLOCK_SIZE
-from ....cutotune import CutoTuneConfig, cutotune, get_cartesian_product_cutotune_configs
-from ....math import ceil_divide, get_powers_of_2
+from ....constants import LIBRARY_NAME
+from ....math import ceil_divide
 from ....utils import cute_op, get_num_elements_and_hidden_size
-
-
-_KERNEL_NAME = "softmax_backward_triton"
 
 
 @triton.jit
@@ -29,10 +25,11 @@ def _load_output_output_grad(output_ptr, output_grad_ptr, h, H, BLOCK_SIZE_H, in
 
 
 @triton.jit
-def _softmax_backward_triton_kernel(
+def softmax_backward_triton_kernel(
     output_ptr,
     output_grad_ptr,
     x_grad_ptr,
+    has_logits_multiplier: tl.constexpr,
     logits_multiplier,
     B,
     H,
@@ -75,40 +72,33 @@ def _softmax_backward_triton_kernel(
 
         output_grad -= accumulator
         output *= output_grad
-        output *= logits_multiplier
+        if has_logits_multiplier:
+            output *= logits_multiplier
 
         x_grad_ptrs = x_grad_ptr + indices
         tl.store(x_grad_ptrs, output, mask=mask_bh)
 
 
-@cutotune(
-    configs=get_cartesian_product_cutotune_configs(
-        BLOCK_SIZE_B=get_powers_of_2(1, MAX_TRITON_BLOCK_SIZE),
-        BLOCK_SIZE_H=get_powers_of_2(1, MAX_TRITON_BLOCK_SIZE),
-        condition=lambda **kwargs: 1024 <= kwargs["BLOCK_SIZE_B"] * kwargs["BLOCK_SIZE_H"] <= 8192,
-    ),
-    default_config=CutoTuneConfig({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_H": 64}),
-    triggers={"output.dtype"},
-)
-@cute_op(f"{LIBRARY_NAME}::{_KERNEL_NAME}", mutates_args={"x_grad"})
+@cute_op(f"{LIBRARY_NAME}::softmax_backward_triton", mutates_args={"x_grad"})
 def softmax_backward_triton(
     output: torch.Tensor,
     output_grad: torch.Tensor,
     x_grad: torch.Tensor,
-    logits_multiplier: float,
+    logits_multiplier: float | None,
     BLOCK_SIZE_B: int,
     BLOCK_SIZE_H: int,
 ) -> None:
-    num_elements, hidden_size = get_num_elements_and_hidden_size(x_grad)
+    B, H = get_num_elements_and_hidden_size(x_grad)
 
-    with torch.device(x_grad.device):
-        _softmax_backward_triton_kernel[(ceil_divide(num_elements, BLOCK_SIZE_B),)](
+    with torch.cuda.device(x_grad.device):
+        softmax_backward_triton_kernel[ceil_divide(B, BLOCK_SIZE_B),](
             output_ptr=output,
             output_grad_ptr=output_grad,
             x_grad_ptr=x_grad,
+            has_logits_multiplier=logits_multiplier not in [None, 1],
             logits_multiplier=logits_multiplier,
-            B=num_elements,
-            H=hidden_size,
+            B=B,
+            H=H,
             BLOCK_SIZE_B=BLOCK_SIZE_B,
             BLOCK_SIZE_H=BLOCK_SIZE_H,
         )

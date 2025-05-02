@@ -1,14 +1,5 @@
-import torch
 import triton
 import triton.language as tl
-
-from ....constants import LIBRARY_NAME, MAX_TRITON_BLOCK_SIZE
-from ....cutotune import CutoTuneConfig, cutotune, get_cartesian_product_cutotune_configs
-from ....math import ceil_divide, get_powers_of_2
-from ....utils import cute_op, get_num_elements_and_hidden_size
-
-
-_KERNEL_NAME = "softmax_forward_triton"
 
 
 @triton.jit
@@ -26,9 +17,10 @@ def _load_x(x_ptr, h, H, BLOCK_SIZE_H, indices_b, mask_b, other=None):
 
 
 @triton.jit
-def _softmax_forward_triton_kernel(
+def softmax_forward_triton_kernel(
     x_ptr,
     output_ptr,
+    has_logits_multiplier: tl.constexpr,
     logits_multiplier,
     B,
     H,
@@ -51,7 +43,8 @@ def _softmax_forward_triton_kernel(
         )
 
         x = x.to(tl.float32)
-        x *= logits_multiplier
+        if has_logits_multiplier:
+            x *= logits_multiplier
 
         prev_m = M
         m = tl.max(x, axis=1, keep_dims=True)
@@ -67,37 +60,12 @@ def _softmax_forward_triton_kernel(
         )
 
         x = x.to(tl.float32)
-        x *= logits_multiplier
+        if has_logits_multiplier:
+            x *= logits_multiplier
+
         x -= M
         x = tl.exp(x)
         x /= Z
 
         output_ptrs = output_ptr + indices
         tl.store(output_ptrs, x, mask=mask_bh)
-
-
-@cutotune(
-    configs=get_cartesian_product_cutotune_configs(
-        BLOCK_SIZE_B=get_powers_of_2(1, MAX_TRITON_BLOCK_SIZE),
-        BLOCK_SIZE_H=get_powers_of_2(1, MAX_TRITON_BLOCK_SIZE),
-        condition=lambda **kwargs: 1024 <= kwargs["BLOCK_SIZE_B"] * kwargs["BLOCK_SIZE_H"] <= 8192,
-    ),
-    default_config=CutoTuneConfig({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_H": 64}),
-    triggers={"x.dtype"},
-)
-@cute_op(f"{LIBRARY_NAME}::{_KERNEL_NAME}", mutates_args={"output"})
-def softmax_forward_triton(
-    x: torch.Tensor, output: torch.Tensor, logits_multiplier: float, BLOCK_SIZE_B: int, BLOCK_SIZE_H: int
-) -> None:
-    num_elements, hidden_size = get_num_elements_and_hidden_size(x)
-
-    with torch.device(x.device):
-        _softmax_forward_triton_kernel[(ceil_divide(num_elements, BLOCK_SIZE_B),)](
-            x_ptr=x,
-            output_ptr=output,
-            logits_multiplier=logits_multiplier,
-            B=num_elements,
-            H=hidden_size,
-            BLOCK_SIZE_B=BLOCK_SIZE_B,
-            BLOCK_SIZE_H=BLOCK_SIZE_H,
-        )
