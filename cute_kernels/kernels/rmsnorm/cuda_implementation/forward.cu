@@ -5,6 +5,7 @@
 #include "include/cute_kernels.h"
 
 namespace ck = cute_kernels;
+namespace ck_mem = ck::memory;
 
 using fp32 = ck::fp32;
 using fp32_2 = ck::fp32_2;
@@ -21,40 +22,23 @@ __global__ void _rmsnorm_forward_cuda_kernel(const scalar_t *x,
                                              scalar_t *rmsnorm_denominator,
                                              const uint32 B,
                                              const uint32 H) {
-    constexpr int num_elements_per_thread = 16 / sizeof(scalar_t);
-    static_assert(num_elements_per_thread == 4 || num_elements_per_thread == 8);
+    constexpr int num_elements_per_thread = ck_mem::get_num_elements_for_vector_load_stores<scalar_t>();
+    const uint32 H_vec = H / num_elements_per_thread;
 
-    using dtype = ck::DType<scalar_t>;
-    using T = typename dtype::nv_dtype;
-    using T2 = typename dtype::nv_dtype2;
+    fp32 accumulator = 0;
+    if (threadIdx.x < H_vec) {
+        // compute RMSNorm's denominator locally for each thread
+        const scalar_t *x_vec = ck_mem::load_128_bits<scalar_t>(x, thread_id);
+        fp32 x_vec_fp32[num_elements_per_thread];
 
-    const uint32 thread_id = ck::get_global_thread_id();
-    const uint32 num_elements4 = num_elements / num_elements_per_thread;
-
-    if (thread_id < num_elements4) {
-        const fp32 *x_vec = (fp32 *)&((fp32_4 *)x)[thread_id];
-        fp32 output_buffer[4];
-
-        // clang-format off
-        #pragma unroll
-        // clang-format on
-        for (int i = 0; i < 4; i++) {
-            if constexpr (std::is_same_v<scalar_t, fp32>) {
-                output_buffer[i] = x_vec[i] + y;
-            } else {
-                fp32_2 _x_upcast = dtype::upcast(dtype::reinterpret_32_bits_as_2x16(x_vec[i]));
-                _x_upcast = ck::DType<fp32>::make2(_x_upcast.x + y, _x_upcast.y + y);
-                output_buffer[i] = dtype::reinterpret_2x16_as_32_bits(dtype::downcast(_x_upcast));
-            }
+        for (uint32 i = 0; i < num_elements_per_thread; i++) {
+            fp32 _x = ck::DType<scalar_t>::upcast(x_vec[i]);
+            x_vec_fp32[i] = _x;
+            accumulator += _x * _x;
         }
-
-        ((fp32_4 *)output)[thread_id] = ck::DType<fp32>::make4(output_buffer);
     }
 
-    const uint32 index = num_elements4 * num_elements_per_thread + thread_id;
-    if (index < num_elements) {
-        output[index] = x[index] + y;
-    }
+    accumulator = 1 / accumulator;
 }
 
 void rmsnorm_forward_cuda(const torch::Tensor &x,
