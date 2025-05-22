@@ -115,5 +115,12 @@ def fused_swiglu_triton(
 
     with torch.device(x.device):
         fused_swiglu_triton_kernel[GRID](
-            x_ptr=x, Wg_ptr=gate_weight, Wu_ptr=up_weight, Wd_ptr=down_weight, y_ptr=output, B=B, H=H, I=I
+            x_ptr=x,
+            Wg_ptr=gate_weight,
+            Wu_ptr=up_weight,
+            Wd_ptr=down_weight,
+            y_ptr=output.float() if output.dtype == torch.bfloat16 else output,
+            B=B,
+            H=H,
+            I=I,
         )
