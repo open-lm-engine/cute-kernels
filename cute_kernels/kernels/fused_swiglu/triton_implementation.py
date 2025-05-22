@@ -9,7 +9,7 @@ import triton.language as tl
 
 from ...constants import LIBRARY_NAME
 from ...math import ceil_divide, get_powers_of_2
-from ...triton_math import sigmoid
+from ...triton_math import matmul, sigmoid
 from ...utils import cute_op, get_num_elements_and_hidden_size
 
 
@@ -78,10 +78,10 @@ def fused_swiglu_triton_kernel(
         mask = mask_i[:, None] & mask_h[None, :]
 
         Wu = tl.load(Wu_ptr + indices, mask=mask)
-        zu = tl.dot(x, Wu.T, zu)
+        zu = matmul(x, Wu.T, zu, output_dtype=zu.dtype)
 
         Wg = tl.load(Wg_ptr + indices, mask=mask)
-        zg = tl.dot(x, Wg.T, zg)
+        zg = matmul(x, Wg.T, zg, output_dtype=zg.dtype)
 
     z = zu * zg * sigmoid(zg)
     z = z.to(x_ptr.dtype.element_ty)
@@ -94,7 +94,7 @@ def fused_swiglu_triton_kernel(
         mask = mask_h[:, None] & mask_i[None, :]
 
         Wd = tl.load(Wd_ptr + indices, mask=mask)
-        y = tl.dot(z, Wd.T)
+        y = matmul(z, Wd.T, output_dtype=z.dtype)
 
         mask = mask_b[:, None] & mask_h[None, :]
         indices = indices_b[:, None] * H + indices_h[None, :]
