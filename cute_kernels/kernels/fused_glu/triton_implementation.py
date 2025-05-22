@@ -3,17 +3,45 @@
 # **************************************************
 
 
+import torch
 import triton
 import triton.language as tl
 
+from ...constants import LIBRARY_NAME
+from ...math import ceil_divide, get_powers_of_2
 from ...triton_math import sigmoid
+from ...utils import cute_op, get_num_elements_and_hidden_size
 
 
+def _get_autotune_configs() -> list[triton.Config]:
+    configs = []
+    for BLOCK_SIZE_B in get_powers_of_2(32, 64):
+        for BLOCK_SIZE_I in get_powers_of_2(32, 64):
+            for BLOCK_SIZE_H in get_powers_of_2(16, 64):
+                if BLOCK_SIZE_B * BLOCK_SIZE_H * BLOCK_SIZE_I <= 16384:
+                    for num_warps in get_powers_of_2(4, 8):
+                        for num_stages in range(4):
+                            configs.append(
+                                triton.Config(
+                                    {
+                                        "BLOCK_SIZE_B": BLOCK_SIZE_B,
+                                        "BLOCK_SIZE_I": BLOCK_SIZE_I,
+                                        "BLOCK_SIZE_H": BLOCK_SIZE_H,
+                                    },
+                                    num_warps=num_warps,
+                                    num_stages=num_stages,
+                                )
+                            )
+
+    return configs
+
+
+@triton.autotune(configs=_get_autotune_configs(), key=[], reset_to_zero=["y_ptr"])
 @triton.jit
 def fused_swiglu_triton_kernel(
     x_ptr,
-    Wu_ptr,
     Wg_ptr,
+    Wu_ptr,
     Wd_ptr,
     y_ptr,
     B,
@@ -67,3 +95,22 @@ def fused_swiglu_triton_kernel(
 
         indices = indices_b[:, None] * H + indices_h[None, :]
         tl.atomic_add(y_ptr + indices, y, mask=mask_b[:, None] & mask_h[None, :])
+
+
+@cute_op(f"{LIBRARY_NAME}::fused_swiglu_triton", mutates_args={"output"})
+def fused_swiglu_triton(
+    x: torch.Tensor,
+    gate_weight: torch.Tensor,
+    up_weight: torch.Tensor,
+    down_weight: torch.Tensor,
+    output: torch.Tensor,
+) -> None:
+    B, H = get_num_elements_and_hidden_size(x)
+    I = down_weight.size(1)
+
+    GRID = lambda meta: (ceil_divide(B, meta["BLOCK_SIZE_B"]) * ceil_divide(I, meta["BLOCK_SIZE_I"]),)
+
+    with torch.device(x.device):
+        fused_swiglu_triton_kernel[GRID](
+            x_ptr=x, Wg_ptr=gate_weight, Wu_ptr=up_weight, Wd_ptr=down_weight, y_ptr=output, B=B, H=H, I=I
+        )

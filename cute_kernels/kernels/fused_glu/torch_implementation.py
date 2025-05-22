@@ -9,18 +9,12 @@ from ..swiglu import swiglu_torch
 
 
 def fused_swiglu_torch(
-    x: torch.Tensor,
-    up_weight: torch.Tensor,
-    gate_weight: torch.Tensor,
-    down_weight: torch.Tensor,
-    up_bias: torch.Tensor | None = None,
-    gate_bias: torch.Tensor | None = None,
-    down_bias: torch.Tensor | None = None,
+    x: torch.Tensor, up_weight: torch.Tensor, gate_weight: torch.Tensor, down_weight: torch.Tensor
 ) -> torch.Tensor:
-    up = F.linear(x, up_weight, up_bias)
-    gate = F.linear(x, gate_weight, gate_bias)
+    up = F.linear(x, up_weight)
+    gate = F.linear(x, gate_weight)
 
     output = swiglu_torch(gate=gate, up=up)
-    output = F.linear(output, down_weight, down_bias)
+    output = F.linear(output, down_weight)
 
     return output
