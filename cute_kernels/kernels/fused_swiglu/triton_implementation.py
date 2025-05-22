@@ -70,12 +70,12 @@ def fused_swiglu_triton_kernel(
         indices_h = h * BLOCK_SIZE_H + tl.arange(0, BLOCK_SIZE_H)
         mask_h = indices_h < H
 
-        mask = mask_b[:, None] & mask_h[None, :]
         indices = indices_b[:, None] * H + indices_h[None, :]
+        mask = mask_b[:, None] & mask_h[None, :]
         x = tl.load(x_ptr + indices, mask=mask)
 
-        mask = mask_i[:, None] & mask_h[None, :]
         indices = indices_i[:, None] * H + indices_h[None, :]
+        mask = mask_i[:, None] & mask_h[None, :]
 
         Wu = tl.load(Wu_ptr + indices, mask=mask)
         zu = tl.dot(x, Wu.T, zu)
@@ -90,14 +90,15 @@ def fused_swiglu_triton_kernel(
         indices_h = h * BLOCK_SIZE_H + tl.arange(0, BLOCK_SIZE_H)
         mask_h = indices_h < H
 
-        mask = mask_h[:, None] & mask_i[None, :]
         indices = indices_h[:, None] * I + indices_i[None, :]
+        mask = mask_h[:, None] & mask_i[None, :]
 
         Wd = tl.load(Wd_ptr + indices, mask=mask)
         y = tl.dot(z, Wd.T)
 
-        indices = indices_b[:, None] * H + indices_h[None, :]
         mask = mask_b[:, None] & mask_h[None, :]
+        indices = indices_b[:, None] * H + indices_h[None, :]
+
         tl.atomic_add(y_ptr + indices, y, mask=mask)
 
 
