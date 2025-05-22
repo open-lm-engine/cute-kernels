@@ -90,11 +90,11 @@ def fused_swiglu_forward_triton_kernel(
     z = z.to(x_ptr.dtype.element_ty)
 
     if not MEMORY_EFFICIENT:
-        indices = indices_b[:, None] * I + indices_i[None, :]
-        mask = mask_b[:, None] & mask_i[None, :]
+        indices_bi = indices_b[:, None] * I + indices_i[None, :]
+        mask_bi = mask_b[:, None] & mask_i[None, :]
 
-        tl.store(g_ptr + indices, g, mask=mask)
-        tl.store(u_ptr + indices, u, mask=mask)
+        tl.store(g_ptr + indices_bi, g, mask=mask_bi)
+        tl.store(u_ptr + indices_bi, u, mask=mask_bi)
 
     for h in range(tl.cdiv(H, BLOCK_SIZE_H)):
         indices_h = h * BLOCK_SIZE_H + tl.arange(0, BLOCK_SIZE_H)
