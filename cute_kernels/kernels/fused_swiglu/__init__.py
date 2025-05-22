@@ -32,7 +32,8 @@ class _FusedSwiglu_Cute(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output: torch.Tensor) -> tuple[torch.Tensor | None]:
-        return grad_output
+        up_weight, gate_weight, down_weight = ctx.saved_tensors
+        return grad_output, up_weight, gate_weight, down_weight, None
 
 
 def fused_swiglu_cute(
