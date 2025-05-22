@@ -36,7 +36,7 @@ def _get_autotune_configs() -> list[triton.Config]:
     return configs
 
 
-@triton.autotune(configs=_get_autotune_configs(), key=[], reset_to_zero=["y_ptr"])
+@triton.autotune(configs=_get_autotune_configs(), key=[], reset_to_zero=["y_ptr", "MEMORY_EFFICIENT"])
 @triton.jit
 def fused_swiglu_forward_triton_kernel(
     x_ptr,
