@@ -44,12 +44,15 @@ def fused_swiglu_forward_triton_kernel(
     Wu_ptr,
     Wd_ptr,
     y_ptr,
+    g_ptr,
+    u_ptr,
     B,
     H,
     I,
     BLOCK_SIZE_B: tl.constexpr,
     BLOCK_SIZE_H: tl.constexpr,
     BLOCK_SIZE_I: tl.constexpr,
+    MEMORY_EFFICIENT: tl.constexpr,
 ):
     BLOCK_ID = tl.program_id(axis=0)
     NUM_BLOCKS_I = tl.cdiv(I, BLOCK_SIZE_I)
@@ -63,8 +66,8 @@ def fused_swiglu_forward_triton_kernel(
     mask_b = indices_b < B
     mask_i = indices_i < I
 
-    zu = tl.zeros((BLOCK_SIZE_B, BLOCK_SIZE_I), dtype=tl.float32)
-    zg = tl.zeros((BLOCK_SIZE_B, BLOCK_SIZE_I), dtype=tl.float32)
+    u = tl.zeros((BLOCK_SIZE_B, BLOCK_SIZE_I), dtype=tl.float32)
+    g = tl.zeros((BLOCK_SIZE_B, BLOCK_SIZE_I), dtype=tl.float32)
 
     for h in range(tl.cdiv(H, BLOCK_SIZE_H)):
         indices_h = h * BLOCK_SIZE_H + tl.arange(0, BLOCK_SIZE_H)
@@ -78,13 +81,20 @@ def fused_swiglu_forward_triton_kernel(
         mask = mask_i[:, None] & mask_h[None, :]
 
         Wu = tl.load(Wu_ptr + indices, mask=mask)
-        zu = matmul(x, Wu.T, zu, output_dtype=zu.dtype)
+        u = matmul(x, Wu.T, u, output_dtype=u.dtype)
 
         Wg = tl.load(Wg_ptr + indices, mask=mask)
-        zg = matmul(x, Wg.T, zg, output_dtype=zg.dtype)
+        g = matmul(x, Wg.T, g, output_dtype=g.dtype)
 
-    z = zu * zg * sigmoid(zg)
+    z = u * g * sigmoid(g)
     z = z.to(x_ptr.dtype.element_ty)
+
+    if not MEMORY_EFFICIENT:
+        indices = indices_b[:, None] * I + indices_i[None, :]
+        mask = mask_b[:, None] & mask_i[None, :]
+
+        tl.store(g_ptr + indices, g, mask=mask)
+        tl.store(u_ptr + indices, u, mask=mask)
 
     for h in range(tl.cdiv(H, BLOCK_SIZE_H)):
         indices_h = h * BLOCK_SIZE_H + tl.arange(0, BLOCK_SIZE_H)
@@ -102,13 +112,16 @@ def fused_swiglu_forward_triton_kernel(
         tl.atomic_add(y_ptr + indices, y, mask=mask)
 
 
-@cute_op(f"{LIBRARY_NAME}::fused_swiglu_forward_triton", mutates_args={"output"})
+@cute_op(f"{LIBRARY_NAME}::fused_swiglu_forward_triton", mutates_args={"gate", "up", "output"})
 def fused_swiglu_forward_triton(
     x: torch.Tensor,
     gate_weight: torch.Tensor,
     up_weight: torch.Tensor,
     down_weight: torch.Tensor,
+    gate: torch.Tensor,
+    up: torch.Tensor,
     output: torch.Tensor,
+    memory_efficient: bool,
 ) -> None:
     B, H = get_num_elements_and_hidden_size(x)
     I = down_weight.size(1)
@@ -122,7 +135,10 @@ def fused_swiglu_forward_triton(
             Wu_ptr=up_weight,
             Wd_ptr=down_weight,
             y_ptr=output,
+            g_ptr=gate,
+            u_ptr=up,
             B=B,
             H=H,
             I=I,
+            MEMORY_EFFICIENT=memory_efficient,
         )

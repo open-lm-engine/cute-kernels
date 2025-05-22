@@ -25,7 +25,12 @@ class _FusedSwiglu_Cute(torch.autograd.Function):
         up = None if memory_efficient else torch.empty(x.size(0), up_weight.size(0))
 
         fused_swiglu_forward_triton(
-            x=x, gate_weight=gate_weight, up_weight=up_weight, down_weight=down_weight, output=output
+            x=x,
+            gate_weight=gate_weight,
+            up_weight=up_weight,
+            down_weight=down_weight,
+            output=output,
+            memory_efficient=memory_efficient,
         )
 
         ctx.save_for_backward(up_weight, gate_weight, down_weight, gate, up)
