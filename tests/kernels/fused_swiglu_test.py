@@ -15,7 +15,7 @@ from ..test_commons import TestCommons
 class FusedSwiGLUTest(TestCommons):
     @parameterized.expand(
         TestCommons.make_args_matrix(
-            [(8, 8)],  # size
+            TestCommons.get_2d_tensor_sizes(),  # size
             [torch.device("cuda")],  # device
             TestCommons.get_dtypes(),  # dtype
             [fused_swiglu_cute],  # , torch.compile(fused_swiglu_cute, fullgraph=True)],  # function
@@ -23,17 +23,18 @@ class FusedSwiGLUTest(TestCommons):
     )
     def test_swiglu(self, size: tuple[int], device: torch.device, dtype: torch.dtype, function: Callable) -> None:
         std = 0.02
+        intermediate_size = 4107
 
         x_kernel, x_expected = self.get_random_duplicated_tensors(size, device=device, dtype=dtype)
 
         gate_weight_kernel, gate_weight_expected = self.get_random_duplicated_tensors(
-            size, device=device, dtype=dtype, std=std
+            (intermediate_size, size[1]), device=device, dtype=dtype, std=std
         )
         up_weight_kernel, up_weight_expected = self.get_random_duplicated_tensors(
-            size, device=device, dtype=dtype, std=std
+            (intermediate_size, size[1]), device=device, dtype=dtype, std=std
         )
         down_weight_kernel, down_weight_expected = self.get_random_duplicated_tensors(
-            size, device=device, dtype=dtype, std=std
+            (size[1], intermediate_size), device=device, dtype=dtype, std=std
         )
 
         z_kernel = function(
