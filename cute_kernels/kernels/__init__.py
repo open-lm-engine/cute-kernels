@@ -8,6 +8,7 @@ from .continuous_count import continuous_count_cute, continuous_count_torch
 from .cross_entropy import cross_entropy_cute, cross_entropy_torch
 from .fused_linear_cross_entropy import fused_linear_cross_entropy_cute, fused_linear_cross_entropy_torch
 from .fused_residual_add_rmsnorm import fused_residual_add_rmsnorm_cute, fused_residual_add_rmsnorm_torch
+from .fused_swiglu import fused_swiglu_cute, fused_swiglu_torch
 from .gemm import gemm_cute, gemm_torch
 from .gru import gru_cute, gru_torch
 from .linear import linear_cute, linear_torch

@@ -27,6 +27,8 @@ from .kernels import (
     fused_linear_cross_entropy_torch,
     fused_residual_add_rmsnorm_cute,
     fused_residual_add_rmsnorm_torch,
+    fused_swiglu_cute,
+    fused_swiglu_torch,
     gemm_cute,
     gemm_torch,
     gru_cute,
