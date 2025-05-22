@@ -118,8 +118,8 @@ def fused_swiglu_forward_triton(
     gate_weight: torch.Tensor,
     up_weight: torch.Tensor,
     down_weight: torch.Tensor,
-    gate: torch.Tensor,
-    up: torch.Tensor,
+    gate: torch.Tensor | None,
+    up: torch.Tensor | None,
     output: torch.Tensor,
     memory_efficient: bool,
 ) -> None:

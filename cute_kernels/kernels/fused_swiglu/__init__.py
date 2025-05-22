@@ -29,6 +29,8 @@ class _FusedSwiglu_Cute(torch.autograd.Function):
             gate_weight=gate_weight,
             up_weight=up_weight,
             down_weight=down_weight,
+            gate=gate,
+            up=up,
             output=output,
             memory_efficient=memory_efficient,
         )
