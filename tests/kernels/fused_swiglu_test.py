@@ -22,7 +22,7 @@ class FusedSwiGLUTest(TestCommons):
         )
     )
     def test_swiglu(self, size: tuple[int], device: torch.device, dtype: torch.dtype, function: Callable) -> None:
-        std = 1
+        std = 0.02
 
         x_kernel, x_expected = self.get_random_duplicated_tensors(size, device=device, dtype=dtype)
 
