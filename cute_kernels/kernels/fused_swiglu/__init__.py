@@ -13,8 +13,10 @@ class _FusedSwiglu_Cute(torch.autograd.Function):
     def forward(
         ctx, x: torch.Tensor, up_weight: torch.Tensor, gate_weight: torch.Tensor, down_weight: torch.Tensor
     ) -> torch.Tensor:
-        output = torch.zeros_like(x)
+        output = torch.zeros_like(x, dtype=torch.float32 if x.dtype == torch.bfloat16 else x.dtype)
         fused_swiglu_triton(x=x, gate_weight=gate_weight, up_weight=up_weight, down_weight=down_weight, output=output)
+
+        output = output.type_as(x)
 
         return output
 

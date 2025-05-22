@@ -119,7 +119,7 @@ def fused_swiglu_triton(
             Wg_ptr=gate_weight,
             Wu_ptr=up_weight,
             Wd_ptr=down_weight,
-            y_ptr=output.float() if output.dtype == torch.bfloat16 else output,
+            y_ptr=output,
             B=B,
             H=H,
             I=I,
