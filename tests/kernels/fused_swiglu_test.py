@@ -7,9 +7,12 @@ from typing import Callable
 import torch
 from parameterized import parameterized
 
-from cute_kernels import fused_swiglu_cute, fused_swiglu_torch
+from cute_kernels import fused_swiglu_cute, fused_swiglu_torch, set_seed
 
 from ..test_commons import TestCommons
+
+
+_SEED = 42
 
 
 class FusedSwiGLUTest(TestCommons):
@@ -22,6 +25,8 @@ class FusedSwiGLUTest(TestCommons):
         )
     )
     def test_swiglu(self, size: tuple[int], device: torch.device, dtype: torch.dtype, function: Callable) -> None:
+        set_seed(_SEED)
+
         std = 0.02
         intermediate_size = 4107
 
