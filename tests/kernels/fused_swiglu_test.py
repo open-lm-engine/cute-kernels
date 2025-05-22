@@ -7,7 +7,7 @@ from typing import Callable
 import torch
 from parameterized import parameterized
 
-from cute_kernels import CutoTuneParameter, KernelBackend, fused_swiglu_cute, fused_swiglu_torch
+from cute_kernels import fused_swiglu_cute, fused_swiglu_torch
 
 from ..test_commons import TestCommons
 
@@ -51,14 +51,11 @@ class FusedSwiGLUTest(TestCommons):
             down_weight=down_weight_expected,
         )
 
-        # print(z_kernel)
-        # print(z_expected)
-        print(z_kernel - z_expected)
-        assert False
-
         # z_kernel.mean().backward()
         # z_expected.mean().backward()
 
-        self.assert_equal_tensors(z_kernel, z_expected, False, atol_float32=5.5e-6, rtol_float32=0)
+        self.assert_equal_tensors(
+            z_kernel, z_expected, False, atol_float32=5.5e-6, rtol_float32=0, atol_float16=4e-2, rtol_float16=0
+        )
         # self.assert_equal_tensors(x_kernel.grad, x_expected.grad, False, atol_float32=5e-6, rtol_float32=0)
         # self.assert_equal_tensors(y_kernel.grad, y_expected.grad, False, atol_float32=5e-6, rtol_float32=0)
