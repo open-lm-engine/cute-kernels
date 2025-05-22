@@ -11,34 +11,12 @@ from ....constants import LIBRARY_NAME
 from ....math import ceil_divide, get_powers_of_2
 from ....triton_math import matmul, sigmoid
 from ....utils import cute_op, get_num_elements_and_hidden_size
-
-
-def _get_autotune_configs() -> list[triton.Config]:
-    configs = []
-    for BLOCK_SIZE_B in get_powers_of_2(32, 64):
-        for BLOCK_SIZE_I in get_powers_of_2(32, 64):
-            for BLOCK_SIZE_H in get_powers_of_2(16, 64):
-                if BLOCK_SIZE_B * BLOCK_SIZE_H * BLOCK_SIZE_I <= 16384:
-                    for num_warps in get_powers_of_2(2, 8):
-                        for num_stages in range(6):
-                            configs.append(
-                                triton.Config(
-                                    {
-                                        "BLOCK_SIZE_B": BLOCK_SIZE_B,
-                                        "BLOCK_SIZE_I": BLOCK_SIZE_I,
-                                        "BLOCK_SIZE_H": BLOCK_SIZE_H,
-                                    },
-                                    num_warps=num_warps,
-                                    num_stages=num_stages,
-                                )
-                            )
-
-    return configs
+from .forward import _get_autotune_configs
 
 
 @triton.autotune(configs=_get_autotune_configs(), key=[], reset_to_zero=["y_ptr"])
 @triton.jit
-def fused_swiglu_forward_triton_kernel(
+def fused_swiglu_backward_triton_kernel(
     x_ptr,
     Wg_ptr,
     Wu_ptr,
@@ -102,8 +80,8 @@ def fused_swiglu_forward_triton_kernel(
         tl.atomic_add(y_ptr + indices, y, mask=mask)
 
 
-@cute_op(f"{LIBRARY_NAME}::fused_swiglu_forward_triton", mutates_args={"output"})
-def fused_swiglu_forward_triton(
+@cute_op(f"{LIBRARY_NAME}::fused_swiglu_backward_triton", mutates_args={"output"})
+def fused_swiglu_backward_triton(
     x: torch.Tensor,
     gate_weight: torch.Tensor,
     up_weight: torch.Tensor,
@@ -116,7 +94,7 @@ def fused_swiglu_forward_triton(
     GRID = lambda meta: (ceil_divide(B, meta["BLOCK_SIZE_B"]) * ceil_divide(I, meta["BLOCK_SIZE_I"]),)
 
     with torch.device(x.device):
-        fused_swiglu_forward_triton_kernel[GRID](
+        fused_swiglu_backward_triton_kernel[GRID](
             x_ptr=x,
             Wg_ptr=gate_weight,
             Wu_ptr=up_weight,

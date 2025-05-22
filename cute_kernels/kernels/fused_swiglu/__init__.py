@@ -6,7 +6,7 @@ import torch
 
 from ...utils import ensure_contiguous
 from .torch_implementation import fused_swiglu_torch
-from .triton_implementation import fused_swiglu_triton
+from .triton_implementation import fused_swiglu_backward_triton, fused_swiglu_forward_triton
 
 
 class _FusedSwiglu_Cute(torch.autograd.Function):
@@ -24,7 +24,9 @@ class _FusedSwiglu_Cute(torch.autograd.Function):
         gate = None if memory_efficient else torch.empty(x.size(0), up_weight.size(0))
         up = None if memory_efficient else torch.empty(x.size(0), up_weight.size(0))
 
-        fused_swiglu_triton(x=x, gate_weight=gate_weight, up_weight=up_weight, down_weight=down_weight, output=output)
+        fused_swiglu_forward_triton(
+            x=x, gate_weight=gate_weight, up_weight=up_weight, down_weight=down_weight, output=output
+        )
 
         ctx.save_for_backward(up_weight, gate_weight, down_weight, gate, up)
 
