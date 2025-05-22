@@ -20,7 +20,7 @@ class FusedSwiGLUTest(TestCommons):
         TestCommons.make_args_matrix(
             TestCommons.get_2d_tensor_sizes(),  # size
             [torch.device("cuda")],  # device
-            [torch.float32],  # dtype
+            TestCommons.get_dtypes(),  # dtype
             [fused_swiglu_cute],  # , torch.compile(fused_swiglu_cute, fullgraph=True)],  # function
         )
     )
@@ -59,6 +59,8 @@ class FusedSwiGLUTest(TestCommons):
         # z_kernel.mean().backward()
         # z_expected.mean().backward()
 
-        self.assert_equal_tensors(z_kernel, z_expected, False, atol_float32=3e-5, rtol_float32=1.5e-3)
+        self.assert_equal_tensors(
+            z_kernel, z_expected, False, atol_float32=3e-5, rtol_float32=1.5e-3, atol_float16=6e-5, rtol_float16=0
+        )
         # self.assert_equal_tensors(x_kernel.grad, x_expected.grad, False, atol_float32=5e-6, rtol_float32=0)
         # self.assert_equal_tensors(y_kernel.grad, y_expected.grad, False, atol_float32=5e-6, rtol_float32=0)
