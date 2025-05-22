@@ -25,7 +25,7 @@ class FusedSwiGLUTest(TestCommons):
         std = 0.02
         intermediate_size = 4107
 
-        x_kernel, x_expected = self.get_random_duplicated_tensors(size, device=device, dtype=dtype)
+        x_kernel, x_expected = self.get_random_duplicated_tensors(size, device=device, dtype=dtype, std=std)
 
         gate_weight_kernel, gate_weight_expected = self.get_random_duplicated_tensors(
             (intermediate_size, size[1]), device=device, dtype=dtype, std=std
@@ -54,6 +54,6 @@ class FusedSwiGLUTest(TestCommons):
         # z_kernel.mean().backward()
         # z_expected.mean().backward()
 
-        self.assert_equal_tensors(z_kernel, z_expected, False, atol_float32=8e-3, rtol_float32=0)
+        self.assert_equal_tensors(z_kernel, z_expected, False, atol_float32=7e-5, rtol_float32=0)
         # self.assert_equal_tensors(x_kernel.grad, x_expected.grad, False, atol_float32=5e-6, rtol_float32=0)
         # self.assert_equal_tensors(y_kernel.grad, y_expected.grad, False, atol_float32=5e-6, rtol_float32=0)
