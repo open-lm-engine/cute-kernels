@@ -80,13 +80,16 @@ def fused_swiglu_backward_triton_kernel(
         tl.atomic_add(y_ptr + indices, y, mask=mask)
 
 
-@cute_op(f"{LIBRARY_NAME}::fused_swiglu_backward_triton", mutates_args={"output"})
+@cute_op(f"{LIBRARY_NAME}::fused_swiglu_backward_triton", mutates_args={"gate", "up", "output"})
 def fused_swiglu_backward_triton(
     x: torch.Tensor,
     gate_weight: torch.Tensor,
     up_weight: torch.Tensor,
     down_weight: torch.Tensor,
+    gate: torch.Tensor | None,
+    up: torch.Tensor | None,
     output: torch.Tensor,
+    memory_efficient: bool,
 ) -> None:
     B, H = get_num_elements_and_hidden_size(x)
     I = down_weight.size(1)
@@ -100,7 +103,10 @@ def fused_swiglu_backward_triton(
             Wu_ptr=up_weight,
             Wd_ptr=down_weight,
             y_ptr=output,
+            g_ptr=gate,
+            u_ptr=up,
             B=B,
             H=H,
             I=I,
+            MEMORY_EFFICIENT=memory_efficient,
         )
