@@ -94,7 +94,7 @@ def fused_swiglu_triton_kernel(
         mask = mask_h[:, None] & mask_i[None, :]
 
         Wd = tl.load(Wd_ptr + indices, mask=mask)
-        y = matmul(z, Wd.T, output_dtype=z.dtype)
+        y = matmul(z, Wd.T, None, output_dtype=z.dtype)
 
         mask = mask_b[:, None] & mask_h[None, :]
         indices = indices_b[:, None] * H + indices_h[None, :]
