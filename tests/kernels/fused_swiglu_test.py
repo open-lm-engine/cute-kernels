@@ -21,10 +21,13 @@ class FusedSwiGLUTest(TestCommons):
             TestCommons.get_2d_tensor_sizes(),  # size
             [torch.device("cuda")],  # device
             TestCommons.get_dtypes(),  # dtype
+            [False, True],  # memory_efficient
             [fused_swiglu_cute],  # , torch.compile(fused_swiglu_cute, fullgraph=True)],  # function
         )
     )
-    def test_swiglu(self, size: tuple[int], device: torch.device, dtype: torch.dtype, function: Callable) -> None:
+    def test_swiglu(
+        self, size: tuple[int], device: torch.device, dtype: torch.dtype, memory_efficient: bool, function: Callable
+    ) -> None:
         set_seed(_SEED)
 
         std = 0.02
@@ -54,6 +57,7 @@ class FusedSwiGLUTest(TestCommons):
             gate_weight=gate_weight_expected,
             up_weight=up_weight_expected,
             down_weight=down_weight_expected,
+            memory_efficient=memory_efficient,
         )
 
         # z_kernel.mean().backward()
