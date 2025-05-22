@@ -70,9 +70,9 @@ def fused_swiglu_triton_kernel(
         indices_h = h * BLOCK_SIZE_H + tl.arange(0, BLOCK_SIZE_H)
         mask_h = indices_h < H
 
-        mask_x = mask_b[:, None] & mask_h[None, :]
-        indices_x = indices_b[:, None] * H + indices_h[None, :]
-        x = tl.load(x_ptr + indices_x, mask=mask_x)
+        mask = mask_b[:, None] & mask_h[None, :]
+        indices = indices_b[:, None] * H + indices_h[None, :]
+        x = tl.load(x_ptr + indices, mask=mask)
 
         mask_W = mask_i[:, None] & mask_h[None, :]
         indices_W = indices_i[:, None] * H + indices_h[None, :]
