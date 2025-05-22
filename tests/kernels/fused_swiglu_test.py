@@ -50,6 +50,7 @@ class FusedSwiGLUTest(TestCommons):
             gate_weight=gate_weight_kernel,
             up_weight=up_weight_kernel,
             down_weight=down_weight_kernel,
+            memory_efficient=memory_efficient,
         )
 
         z_expected = fused_swiglu_torch(
@@ -57,7 +58,6 @@ class FusedSwiGLUTest(TestCommons):
             gate_weight=gate_weight_expected,
             up_weight=up_weight_expected,
             down_weight=down_weight_expected,
-            memory_efficient=memory_efficient,
         )
 
         # z_kernel.mean().backward()
