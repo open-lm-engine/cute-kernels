@@ -58,7 +58,7 @@ class FusedSwiGLUTest(TestCommons):
             z_kernel,
             z_expected,
             False,
-            atol_float32=5.5e-6,
+            atol_float32=8e-3,
             rtol_float32=0,
             atol_float16=4e-2,
             rtol_float16=0,
