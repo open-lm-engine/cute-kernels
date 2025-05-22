@@ -86,18 +86,19 @@ def fused_swiglu_triton_kernel(
     z = zu * zg * sigmoid(zg)
     z = z.to(x_ptr.dtype.element_ty)
 
-    # for h in range(tl.cdiv(H, BLOCK_SIZE_H)):
-    #     indices_h = h * BLOCK_SIZE_H + tl.arange(0, BLOCK_SIZE_H)
-    #     mask_h = indices_h < H
+    for h in range(tl.cdiv(H, BLOCK_SIZE_H)):
+        indices_h = h * BLOCK_SIZE_H + tl.arange(0, BLOCK_SIZE_H)
+        mask_h = indices_h < H
 
-    #     mask_W = mask_h[:, None] & mask_i[None, :]
-    #     indices_W = indices_h[:, None] * I + indices_i[None, :]
+        mask = mask_h[:, None] & mask_i[None, :]
+        indices = indices_h[:, None] * I + indices_i[None, :]
 
-    #     Wd = tl.load(Wd_ptr + indices_W, mask=mask_W)
-    #     y = tl.dot(z, Wd.T)
+        Wd = tl.load(Wd_ptr + indices, mask=mask)
+        y = tl.dot(z, Wd.T)
 
-    #     indices = indices_b[:, None] * H + indices_h[None, :]
-    tl.store(y_ptr + indices_b[:, None] * I + indices_i[None, :], z, mask=mask_b[:, None] & mask_i[None, :])
+        indices = indices_b[:, None] * H + indices_h[None, :]
+        mask = mask_b[:, None] & mask_h[None, :]
+        tl.atomic_add(y_ptr + indices, y, mask=mask)
 
 
 @cute_op(f"{LIBRARY_NAME}::fused_swiglu_triton", mutates_args={"output"})
