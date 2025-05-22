@@ -4,12 +4,14 @@
 
 import torch
 
+from ...utils import ensure_contiguous
 from .torch_implementation import fused_swiglu_torch
 from .triton_implementation import fused_swiglu_triton
 
 
 class _FusedSwiglu_Cute(torch.autograd.Function):
     @staticmethod
+    @ensure_contiguous
     def forward(
         ctx,
         x: torch.Tensor,
@@ -31,6 +33,7 @@ class _FusedSwiglu_Cute(torch.autograd.Function):
         return output.type_as(x)
 
     @staticmethod
+    @ensure_contiguous
     def backward(ctx, grad_output: torch.Tensor) -> tuple[torch.Tensor | None]:
         up_weight, gate_weight, down_weight = ctx.saved_tensors
         return grad_output, up_weight, gate_weight, down_weight, None
