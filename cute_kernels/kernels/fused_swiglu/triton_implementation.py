@@ -87,6 +87,9 @@ def fused_swiglu_triton_kernel(
     z = z.to(x_ptr.dtype.element_ty)
 
     for h in range(tl.cdiv(H, BLOCK_SIZE_H)):
+        indices_h = h * BLOCK_SIZE_H + tl.arange(0, BLOCK_SIZE_H)
+        mask_h = indices_h < H
+
         mask_W = mask_h[:, None] & mask_i[None, :]
         indices_W = indices_h[:, None] * I + indices_i[None, :]
 
