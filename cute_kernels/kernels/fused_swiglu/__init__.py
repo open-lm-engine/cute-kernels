@@ -31,7 +31,8 @@ class _FusedSwiglu_Cute(torch.autograd.Function):
         return output.type_as(x)
 
     @staticmethod
-    def backward(ctx, grad_output: torch.Tensor) -> tuple[torch.Tensor | None]: ...
+    def backward(ctx, grad_output: torch.Tensor) -> tuple[torch.Tensor | None]:
+        return grad_output
 
 
 def fused_swiglu_cute(
