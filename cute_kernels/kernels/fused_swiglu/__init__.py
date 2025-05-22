@@ -20,17 +20,17 @@ class _FusedSwiglu_Cute(torch.autograd.Function):
         down_weight: torch.Tensor,
         memory_efficient: bool,
     ) -> torch.Tensor:
-        intermediate_state = torch.empty(x.size(0), up_weight.size(0))
-        if memory_efficient:
-            pass
-
         output = torch.zeros_like(x, dtype=torch.float32 if x.dtype == torch.bfloat16 else x.dtype)
+        gate = None if memory_efficient else torch.empty(x.size(0), up_weight.size(0))
+        up = None if memory_efficient else torch.empty(x.size(0), up_weight.size(0))
 
         fused_swiglu_triton(x=x, gate_weight=gate_weight, up_weight=up_weight, down_weight=down_weight, output=output)
 
-        ctx.save_for_backward(up_weight, gate_weight, down_weight)
+        ctx.save_for_backward(up_weight, gate_weight, down_weight, gate, up)
 
-        return output.type_as(x)
+        output = output.type_as(x)
+
+        return output
 
     @staticmethod
     @ensure_contiguous
