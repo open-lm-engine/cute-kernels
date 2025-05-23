@@ -8,7 +8,7 @@ import triton
 import triton.language as tl
 
 from ....constants import LIBRARY_NAME
-from ....math import ceil_divide, get_powers_of_2
+from ....math import ceil_divide
 from ....triton_math import matmul, sigmoid
 from ....utils import cute_op, get_num_elements_and_hidden_size
 from .forward import _get_autotune_configs
@@ -80,15 +80,23 @@ def fused_swiglu_backward_triton_kernel(
         tl.atomic_add(y_ptr + indices, y, mask=mask)
 
 
-@cute_op(f"{LIBRARY_NAME}::fused_swiglu_backward_triton", mutates_args={"gate", "up", "output"})
+@cute_op(
+    f"{LIBRARY_NAME}::fused_swiglu_backward_triton",
+    mutates_args={"x_grad", "gate_weight_grad", "up_weight_grad", "down_weight_grad"},
+)
 def fused_swiglu_backward_triton(
     x: torch.Tensor,
+    x_grad: torch.Tensor,
     gate_weight: torch.Tensor,
-    up_weight: torch.Tensor,
-    down_weight: torch.Tensor,
+    gate_weight_grad: torch.Tensor | None,
     gate: torch.Tensor | None,
+    up_weight: torch.Tensor,
+    up_weight_grad: torch.Tensor,
     up: torch.Tensor | None,
+    down_weight: torch.Tensor,
+    down_weight_grad: torch.Tensor,
     output: torch.Tensor,
+    output_grad: torch.Tensor,
     memory_efficient: bool,
 ) -> None:
     B, H = get_num_elements_and_hidden_size(x)
