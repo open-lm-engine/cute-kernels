@@ -37,7 +37,7 @@ def _forward(
         BLOCK_SIZE = 4096
         NUM_WARPS = 32
 
-        with torch.device(x.device):
+        with torch.cuda.device(x.device):
             add_scalar_triton_kernel[ceil_divide(N, BLOCK_SIZE),](
                 x_ptr=x, y=y, output_ptr=output, N=N, BLOCK_SIZE=BLOCK_SIZE, num_warps=NUM_WARPS
             )

@@ -30,7 +30,8 @@ def _forward(
     x: torch.Tensor, y: float, output: torch.Tensor, kernel_backend: KernelBackend | CutoTuneParameter
 ) -> None:
     if kernel_backend == KernelBackend.cuda:
-        add_tensor_cuda(x=x, y=y, output=output, BLOCK_SIZE=1024)
+        BLOCK_SIZE = 1024
+        add_tensor_cuda(x=x, y=y, output=output, BLOCK_SIZE=BLOCK_SIZE)
     elif kernel_backend == KernelBackend.triton:
         N = x.numel()
         BLOCK_SIZE = 4096
