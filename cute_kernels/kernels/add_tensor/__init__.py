@@ -6,10 +6,11 @@ import torch
 
 from ...cutotune import CutoTuneConfig, CutoTuneParameter, cutotune
 from ...kernel_backend import KernelBackend, is_cuda_kernel_backend_allowed, is_triton_kernel_backend_allowed
+from ...math import ceil_divide
 from ...utils import ensure_same_strides, is_nvidia_gpu
 from .cuda_implementation import add_tensor_cuda
 from .torch_implementation import add_tensor_torch
-from .triton_implementation import add_tensor_triton
+from .triton_implementation import add_tensor_triton_kernel
 
 
 @cutotune(
@@ -31,7 +32,14 @@ def _forward(
     if kernel_backend == KernelBackend.cuda:
         add_tensor_cuda(x=x, y=y, output=output, BLOCK_SIZE=1024)
     elif kernel_backend == KernelBackend.triton:
-        add_tensor_triton(x=x, y=y, output=output)
+        N = x.numel()
+        BLOCK_SIZE = 4096
+        NUM_WARPS = 32
+
+        with torch.cuda.device(x.device):
+            add_tensor_triton_kernel[ceil_divide(N, BLOCK_SIZE),](
+                x_ptr=x, y_ptr=y, output_ptr=output, N=N, BLOCK_SIZE=BLOCK_SIZE, num_warps=NUM_WARPS
+            )
     else:
         raise ValueError("unexpected kernel_backend")
 
