@@ -30,16 +30,14 @@ def _forward(
     x: torch.Tensor, y: float, output: torch.Tensor, kernel_backend: KernelBackend | CutoTuneParameter
 ) -> None:
     if kernel_backend == KernelBackend.cuda:
-        BLOCK_SIZE = 1024
-        add_scalar_cuda(x=x, y=y, output=output, BLOCK_SIZE=BLOCK_SIZE)
+        add_scalar_cuda(x=x, y=y, output=output, BLOCK_SIZE=1024)
     elif kernel_backend == KernelBackend.triton:
         N = x.numel()
         BLOCK_SIZE = 4096
-        NUM_WARPS = 32
 
         with torch.cuda.device(x.device):
             add_scalar_triton_kernel[ceil_divide(N, BLOCK_SIZE),](
-                x_ptr=x, y=y, output_ptr=output, N=N, BLOCK_SIZE=BLOCK_SIZE, num_warps=NUM_WARPS
+                x_ptr=x, y=y, output_ptr=output, N=N, BLOCK_SIZE=BLOCK_SIZE, num_warps=32
             )
     else:
         raise ValueError("unexpected kernel_backend")
