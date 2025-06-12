@@ -9,14 +9,17 @@ import triton.language as tl
 from ....constants import LIBRARY_NAME
 from ....math import ceil_divide
 from ....utils import cute_op
+from .group_kernel import _get_autotune_configs
 
 
+@triton.autotune(configs=_get_autotune_configs(), key=["H"], reset_to_zero=["y_ptr"])
 @triton.jit
 def ungroup_with_padding_triton_kernel(
     x_ptr,
     expert_padding_offset_ptr,
     sorted_idxs_ptr,
     scattered_idxs_ptr,
+    router_weights_ptr,
     y_ptr,
     T,
     H,
@@ -33,13 +36,16 @@ def ungroup_with_padding_triton_kernel(
     scattered_idxs = tl.load(scattered_idxs_ptr + indices_b, mask=mask_b)
 
     x_ptrs = x_ptr + indices_b[:, None] * H
-    y_ptrs = y_ptr + scattered_idxs[:, None] * H
+    y_ptrs = y_ptr + (scattered_idxs // K)[:, None] * H
+
+    if router_weights_ptr is not None:
+        router_weights = tl.load(router_weights_ptr + scattered_idxs[:, None], mask=mask_b[:, None])
 
     if expert_padding_offset_ptr is not None:
         sorted_idxs = tl.load(sorted_idxs_ptr + indices_b, mask=mask_b)
         expert_padding_offset = tl.load(expert_padding_offset_ptr + sorted_idxs)
 
-        x_ptrs += expert_padding_offset * H
+        x_ptrs += expert_padding_offset[:, None] * H
 
     NUM_BLOCKS_H = tl.cdiv(H, BLOCK_SIZE_H)
     for h in range(NUM_BLOCKS_H):
@@ -47,13 +53,19 @@ def ungroup_with_padding_triton_kernel(
 
         if h < NUM_BLOCKS_H - 1:
             x = tl.load(x_ptrs + indices_h[None, :], mask=mask_b[:, None])
-            tl.store(y_ptrs + indices_h[None, :], x, mask=mask_b[:, None])
+            if router_weights_ptr is not None:
+                x *= router_weights
+
+            tl.atomic_add(y_ptrs + indices_h[None, :], x, mask=mask_b[:, None])
         else:
             mask_h = indices_h < H
             mask_bh = mask_b[:, None] & mask_h[None, :]
 
             x = tl.load(x_ptrs + indices_h[None, :], mask=mask_bh)
-            tl.store(y_ptrs + indices_h[None, :], x, mask=mask_bh)
+            if router_weights_ptr is not None:
+                x *= router_weights
+
+            tl.atomic_add(y_ptrs + indices_h[None, :], x, mask=mask_bh)
 
 
 @cute_op(f"{LIBRARY_NAME}::ungroup_with_padding_triton", mutates_args={"output"})
@@ -62,26 +74,23 @@ def ungroup_with_padding_triton(
     expert_padding_offset: torch.Tensor,
     sorted_idxs: torch.Tensor,
     scattered_idxs: torch.Tensor,
+    router_weights: torch.Tensor | None,
     output: torch.Tensor,
     T: int,
     H: int,
     K: int,
 ) -> None:
-    BLOCK_SIZE_B = 1
-    BLOCK_SIZE_H = 4096
-    NUM_WARPS = 32
+    GRID = lambda meta: (ceil_divide(T * K, meta["BLOCK_SIZE_B"]),)
 
     with torch.device(x.device):
-        ungroup_with_padding_triton_kernel[ceil_divide(T * K, BLOCK_SIZE_B),](
+        ungroup_with_padding_triton_kernel[GRID](
             x_ptr=x,
             expert_padding_offset_ptr=expert_padding_offset,
             sorted_idxs_ptr=sorted_idxs,
             scattered_idxs_ptr=scattered_idxs,
+            router_weights_ptr=router_weights,
             y_ptr=output,
             T=T,
             H=H,
             K=K,
-            BLOCK_SIZE_B=BLOCK_SIZE_B,
-            BLOCK_SIZE_H=BLOCK_SIZE_H,
-            num_warps=NUM_WARPS,
         )

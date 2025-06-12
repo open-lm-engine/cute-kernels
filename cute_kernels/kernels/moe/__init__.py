@@ -32,6 +32,9 @@ class Experts_Cute(nn.Module):
         self.in_features = in_features
         self.out_features = out_features
 
+        self.register_buffer("N_array", torch.full((num_experts,), fill_value=out_features, dtype=torch.uint32))
+        self.register_buffer("K_array", torch.full((num_experts,), fill_value=in_features, dtype=torch.uint32))
+
         self.reset_parameters()
 
     def forward(
@@ -49,9 +52,13 @@ class Experts_Cute(nn.Module):
     ) -> torch.Tensor:
         if kernel_backend == KernelBackend.cuda:
             assert self.bias is None
-            input = grouped_gemm_experts_cute(x=input, weight=self.weight, expert_frequency=expert_frequency)
+
+            input = grouped_gemm_experts_cute(
+                x=input, weight=self.weight, M_array=expert_frequency, N_array=self.N_array, K_array=self.K_array
+            )
         elif kernel_backend == KernelBackend.triton:
             assert self.bias is None
+
             input = scattered_experts(
                 inputs=input,
                 expert_weights=self.weight.permute(0, 2, 1),
@@ -85,6 +92,9 @@ class Experts_Cute(nn.Module):
         nn.init.normal_(self.weight, mean=0, std=self.std)
         if hasattr(self, "bias") and self.bias is not None:
             self.bias.zero_()
+
+        self.N_array.fill_(self.out_features)
+        self.K_array.fill_(self.in_features)
 
 
 class MoE_Cute(nn.Module):
@@ -204,13 +214,11 @@ class MoE_Cute(nn.Module):
                 expert_padding_offset=expert_padding_offset,
                 sorted_idxs=sorted_expert_idxs,
                 scattered_idxs=sorted_scattered_idxs,
+                router_weights=router_weights,
                 top_k=self.top_k,
                 num_tokens=T,
                 pad_to_multiple_of=8,
             )
-
-            hidden_states = hidden_states.view(T, self.top_k, -1)
-            hidden_states = torch.bmm(router_weights.unsqueeze(1), hidden_states)
         elif kernel_backend == KernelBackend.triton:
             with torch.no_grad():
                 expert_offsets = expert_frequency.cumsum(-1)
