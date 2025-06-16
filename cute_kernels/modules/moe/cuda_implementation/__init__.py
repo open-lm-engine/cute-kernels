@@ -176,6 +176,7 @@ class _GroupWithPadding(torch.autograd.Function):
             T=T,
             H=H,
             K=K,
+            ATOMIC_ADD=True,
         )
 
         x_grad = x_grad.type_as(output_grad)
@@ -204,7 +205,7 @@ class _UngroupWithPadding(torch.autograd.Function):
         K = top_k
 
         assert H % 8 == 0
-        output = torch.empty(T * K, H, device=x.device, dtype=x.dtype)
+        output = torch.empty(T, K, H, device=x.device, dtype=x.dtype)
 
         ungroup_with_padding_triton(
             x=x,
@@ -215,6 +216,7 @@ class _UngroupWithPadding(torch.autograd.Function):
             T=T,
             H=H,
             K=K,
+            ATOMIC_ADD=False,
         )
 
         hidden_states = output.view(T, top_k, -1)
@@ -224,8 +226,6 @@ class _UngroupWithPadding(torch.autograd.Function):
         hidden_states = hidden_states.squeeze(1)
 
         ctx.x_shape = x.size()
-        ctx.T = T
-        ctx.K = K
         ctx.pad_to_multiple_of = pad_to_multiple_of
 
         return hidden_states
@@ -235,9 +235,7 @@ class _UngroupWithPadding(torch.autograd.Function):
     def backward(ctx, output_grad: torch.Tensor) -> torch.Tensor:
         expert_padding_offset, sorted_idxs, scattered_idxs, hidden_states, router_weights = ctx.saved_tensors
         pad_to_multiple_of = ctx.pad_to_multiple_of
-        H = output_grad.size(-1)
-        T = ctx.T
-        K = ctx.K
+        T, K, H = output_grad.size()
 
         output_grad = output_grad.unsqueeze(1)  # T1H
         router_weights = router_weights.unsqueeze(-1)  # TK1
