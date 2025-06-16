@@ -10,7 +10,6 @@ from ....utils import ensure_contiguous
 from .group_kernel import group_with_padding_triton
 from .padded_expert_frequency_kernel import padded_expert_frequency_triton
 from .ungroup_kernel import ungroup_with_padding_triton
-from .ungroup_kernel_atomic_add import ungroup_with_padding_atomic_add_triton
 
 
 class _GroupedGemmExperts_Cute(torch.autograd.Function):
