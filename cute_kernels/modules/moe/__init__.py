@@ -97,40 +97,6 @@ class Experts(nn.Module):
         self.K_array.fill_(self.in_features)
 
 
-class _F(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, hidden_states: torch.Tensor, router_weights: torch.Tensor, top_k: int) -> torch.Tensor:
-        TK = hidden_states.size(0)
-        T = TK // top_k
-
-        hidden_states = hidden_states.view(T, top_k, -1)
-        ctx.save_for_backward(hidden_states, router_weights)
-
-        hidden_states = torch.bmm(router_weights.unsqueeze(1), hidden_states)
-        hidden_states = hidden_states.squeeze(1)
-
-        return hidden_states
-
-    @staticmethod
-    def backward(ctx, output_grad: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, None]:
-        hidden_states, router_weights = ctx.saved_tensors
-
-        output_grad = output_grad.unsqueeze(1)  # T1H
-        router_weights = router_weights.unsqueeze(-1)  # TK1
-
-        # TKH @ TH1
-        router_weights_grad = torch.bmm(hidden_states, output_grad.transpose(-1, -2))
-        # TK
-        router_weights_grad = router_weights_grad.squeeze(-1)
-
-        # TK1 @ T1H
-        hidden_states_grad = torch.bmm(router_weights, output_grad)
-        # TKH
-        hidden_states_grad = hidden_states_grad.view(-1, hidden_states.size(-1))
-
-        return hidden_states_grad, router_weights_grad, None
-
-
 class MoE(nn.Module):
     def __init__(
         self,
@@ -248,12 +214,11 @@ class MoE(nn.Module):
                 expert_padding_offset=expert_padding_offset,
                 sorted_idxs=sorted_expert_idxs,
                 scattered_idxs=sorted_scattered_idxs,
+                router_weights=router_weights,
                 top_k=self.top_k,
                 num_tokens=T,
                 pad_to_multiple_of=8,
             )
-
-            hidden_states = _F.apply(hidden_states, router_weights, self.top_k)
         elif kernel_backend == KernelBackend.triton:
             with torch.no_grad():
                 expert_offsets = expert_frequency.cumsum(-1)
