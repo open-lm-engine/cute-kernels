@@ -227,6 +227,7 @@ class _UngroupWithPadding(torch.autograd.Function):
 
         ctx.x_shape = x.size()
         ctx.pad_to_multiple_of = pad_to_multiple_of
+        ctx.K = K
 
         return hidden_states
 
@@ -235,7 +236,8 @@ class _UngroupWithPadding(torch.autograd.Function):
     def backward(ctx, output_grad: torch.Tensor) -> torch.Tensor:
         expert_padding_offset, sorted_idxs, scattered_idxs, hidden_states, router_weights = ctx.saved_tensors
         pad_to_multiple_of = ctx.pad_to_multiple_of
-        T, K, H = output_grad.size()
+        T, H = output_grad.size()
+        K = ctx.K
 
         output_grad = output_grad.unsqueeze(1)  # T1H
         router_weights = router_weights.unsqueeze(-1)  # TK1
