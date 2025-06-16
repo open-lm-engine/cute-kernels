@@ -167,11 +167,13 @@ class _GroupWithPadding(torch.autograd.Function):
 
         x_grad = torch.zeros(T, H, device=output_grad.device, dtype=torch.float32)
 
-        ungroup_with_padding_atomic_add_triton(
+        ungroup_with_padding_triton(
             x=output_grad,
             expert_padding_offset=expert_padding_offset,
             sorted_idxs=sorted_idxs,
             scattered_idxs=scattered_idxs,
+            router_weights=None,
+            intermediate_output=None,
             output=x_grad,
             T=T,
             H=H,

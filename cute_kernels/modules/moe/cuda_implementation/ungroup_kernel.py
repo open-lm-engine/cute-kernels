@@ -37,8 +37,10 @@ def ungroup_with_padding_triton_kernel(
     scattered_idxs = tl.load(scattered_idxs_ptr + indices_b, mask=mask_b)
 
     x_ptrs = x_ptr + indices_b[:, None] * H
-    z_ptrs = z_ptr + scattered_idxs[:, None] * H
     y_ptrs = y_ptr + (scattered_idxs // K)[:, None] * H
+
+    if z_ptr is not None:
+        z_ptrs = z_ptr + scattered_idxs[:, None] * H
 
     if router_weights_ptr is not None:
         router_weights = tl.load(router_weights_ptr + scattered_idxs[:, None], mask=mask_b[:, None])
@@ -55,7 +57,9 @@ def ungroup_with_padding_triton_kernel(
 
         if h < NUM_BLOCKS_H - 1:
             x = tl.load(x_ptrs + indices_h[None, :], mask=mask_b[:, None])
-            tl.store(z_ptrs + indices_h[None, :], x, mask=mask_b[:, None])
+
+            if z_ptr is not None:
+                tl.store(z_ptrs + indices_h[None, :], x, mask=mask_b[:, None])
 
             if router_weights_ptr is not None:
                 x *= router_weights
@@ -66,7 +70,9 @@ def ungroup_with_padding_triton_kernel(
             mask_bh = mask_b[:, None] & mask_h[None, :]
 
             x = tl.load(x_ptrs + indices_h[None, :], mask=mask_bh)
-            tl.store(z_ptrs + indices_h[None, :], x, mask=mask_bh)
+
+            if z_ptr is not None:
+                tl.store(z_ptrs + indices_h[None, :], x, mask=mask_bh)
 
             if router_weights_ptr is not None:
                 x *= router_weights
@@ -79,8 +85,8 @@ def ungroup_with_padding_triton(
     x: torch.Tensor,
     expert_padding_offset: torch.Tensor,
     sorted_idxs: torch.Tensor,
-    scattered_idxs: torch.Tensor,
-    router_weights: torch.Tensor,
+    scattered_idxs: torch.Tensor | None,
+    router_weights: torch.Tensor | None,
     intermediate_output: torch.Tensor,
     output: torch.Tensor,
     T: int,
