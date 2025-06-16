@@ -10,6 +10,7 @@ from ....utils import ensure_contiguous
 from .group_kernel import group_with_padding_triton
 from .padded_expert_frequency_kernel import padded_expert_frequency_triton
 from .ungroup_kernel import ungroup_with_padding_triton
+from .ungroup_kernel_atomic_add import ungroup_with_padding_atomic_add_triton
 
 
 class _GroupedGemmExperts_Cute(torch.autograd.Function):
@@ -164,9 +165,9 @@ class _GroupWithPadding(torch.autograd.Function):
         H = output_grad.size(-1)
         K = ctx.K
 
-        x_grad = torch.empty(T * K, H, device=output_grad.device, dtype=output_grad.dtype)
+        x_grad = torch.zeros(T, H, device=output_grad.device, dtype=torch.float32)
 
-        ungroup_with_padding_triton(
+        ungroup_with_padding_atomic_add_triton(
             x=output_grad,
             expert_padding_offset=expert_padding_offset,
             sorted_idxs=sorted_idxs,
@@ -177,8 +178,7 @@ class _GroupWithPadding(torch.autograd.Function):
             K=K,
         )
 
-        x_grad = x_grad.view(T, K, H)
-        x_grad = x_grad.sum(dim=1)
+        x_grad = x_grad.type_as(output_grad)
 
         return x_grad, *[None] * 5
 
