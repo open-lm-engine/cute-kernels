@@ -176,7 +176,6 @@ class _GroupWithPadding(torch.autograd.Function):
             T=T,
             H=H,
             K=K,
-            ATOMIC_ADD=True,
         )
 
         x_grad = x_grad.type_as(output_grad)
