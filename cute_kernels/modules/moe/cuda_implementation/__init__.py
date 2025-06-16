@@ -219,17 +219,16 @@ class _UngroupWithPadding(torch.autograd.Function):
             ATOMIC_ADD=False,
         )
 
-        hidden_states = output.view(T, top_k, -1)
-        ctx.save_for_backward(expert_padding_offset, sorted_idxs, scattered_idxs, hidden_states, router_weights)
+        ctx.save_for_backward(expert_padding_offset, sorted_idxs, scattered_idxs, output, router_weights)
 
-        hidden_states = torch.bmm(router_weights.unsqueeze(1), hidden_states)
-        hidden_states = hidden_states.squeeze(1)
+        output = torch.bmm(router_weights.unsqueeze(1), output)
+        output = output.squeeze(1)
 
         ctx.x_shape = x.size()
         ctx.pad_to_multiple_of = pad_to_multiple_of
         ctx.K = K
 
-        return hidden_states
+        return output
 
     @staticmethod
     @ensure_contiguous
