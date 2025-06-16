@@ -221,6 +221,7 @@ class MoE(nn.Module):
 
             hidden_states = hidden_states.view(T, self.top_k, -1)
             hidden_states = torch.bmm(router_weights.unsqueeze(1), hidden_states)
+            hidden_states = hidden_states.squeeze(1)
         elif kernel_backend == KernelBackend.triton:
             with torch.no_grad():
                 expert_offsets = expert_frequency.cumsum(-1)
