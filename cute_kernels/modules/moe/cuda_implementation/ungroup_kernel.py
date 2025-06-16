@@ -19,11 +19,12 @@ def ungroup_with_padding_triton_kernel(
     expert_padding_offset_ptr,
     sorted_idxs_ptr,
     scattered_idxs_ptr,
+    router_weights_ptr,
+    z_ptr,
     y_ptr,
     T,
     H,
     K,
-    ATOMIC_ADD: tl.constexpr,
     BLOCK_SIZE_B: tl.constexpr,
     BLOCK_SIZE_H: tl.constexpr,
 ):
@@ -36,11 +37,11 @@ def ungroup_with_padding_triton_kernel(
     scattered_idxs = tl.load(scattered_idxs_ptr + indices_b, mask=mask_b)
 
     x_ptrs = x_ptr + indices_b[:, None] * H
+    z_ptrs = z_ptr + scattered_idxs[:, None] * H
+    y_ptrs = y_ptr + (scattered_idxs // K)[:, None] * H
 
-    if ATOMIC_ADD:
-        y_ptrs = y_ptr + (scattered_idxs // K)[:, None] * H
-    else:
-        y_ptrs = y_ptr + scattered_idxs[:, None] * H
+    if router_weights_ptr is not None:
+        router_weights = tl.load(router_weights_ptr + scattered_idxs[:, None], mask=mask_b[:, None])
 
     if expert_padding_offset_ptr is not None:
         sorted_idxs = tl.load(sorted_idxs_ptr + indices_b, mask=mask_b)
@@ -54,34 +55,37 @@ def ungroup_with_padding_triton_kernel(
 
         if h < NUM_BLOCKS_H - 1:
             x = tl.load(x_ptrs + indices_h[None, :], mask=mask_b[:, None])
+            tl.store(z_ptrs + indices_h[None, :], x, mask=mask_b[:, None])
 
-            if ATOMIC_ADD:
-                tl.atomic_add(y_ptrs + indices_h[None, :], x, mask=mask_b[:, None])
-            else:
-                tl.store(y_ptrs + indices_h[None, :], x, mask=mask_b[:, None])
+            if router_weights_ptr is not None:
+                x *= router_weights
+
+            tl.atomic_add(y_ptrs + indices_h[None, :], x, mask=mask_b[:, None])
         else:
             mask_h = indices_h < H
             mask_bh = mask_b[:, None] & mask_h[None, :]
 
             x = tl.load(x_ptrs + indices_h[None, :], mask=mask_bh)
+            tl.store(z_ptrs + indices_h[None, :], x, mask=mask_bh)
 
-            if ATOMIC_ADD:
-                tl.atomic_add(y_ptrs + indices_h[None, :], x, mask=mask_bh)
-            else:
-                tl.store(y_ptrs + indices_h[None, :], x, mask=mask_bh)
+            if router_weights_ptr is not None:
+                x *= router_weights
+
+            tl.atomic_add(y_ptrs + indices_h[None, :], x, mask=mask_bh)
 
 
-@cute_op(f"{LIBRARY_NAME}::ungroup_with_padding_triton", mutates_args={"output"})
+@cute_op(f"{LIBRARY_NAME}::ungroup_with_padding_triton", mutates_args={"intermediate_output", "output"})
 def ungroup_with_padding_triton(
     x: torch.Tensor,
     expert_padding_offset: torch.Tensor,
     sorted_idxs: torch.Tensor,
     scattered_idxs: torch.Tensor,
+    router_weights: torch.Tensor,
+    intermediate_output: torch.Tensor,
     output: torch.Tensor,
     T: int,
     H: int,
     K: int,
-    ATOMIC_ADD: bool,
 ) -> None:
     GRID = lambda meta: (ceil_divide(T * K, meta["BLOCK_SIZE_B"]),)
 
@@ -91,9 +95,10 @@ def ungroup_with_padding_triton(
             expert_padding_offset_ptr=expert_padding_offset,
             sorted_idxs_ptr=sorted_idxs,
             scattered_idxs_ptr=scattered_idxs,
+            router_weights_ptr=router_weights,
+            z_ptr=intermediate_output,
             y_ptr=output,
             T=T,
             H=H,
             K=K,
-            ATOMIC_ADD=ATOMIC_ADD,
         )

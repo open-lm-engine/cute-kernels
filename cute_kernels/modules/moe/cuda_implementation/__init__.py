@@ -204,25 +204,26 @@ class _UngroupWithPadding(torch.autograd.Function):
         K = top_k
 
         assert H % 8 == 0
-        output = torch.empty(T, K, H, device=x.device, dtype=x.dtype)
+
+        intermediate_output = torch.empty(T, K, H, device=x.device, dtype=x.dtype)
+        output = torch.zeros(T, H, device=x.device, dtype=torch.float32)
 
         ungroup_with_padding_triton(
             x=x,
             expert_padding_offset=expert_padding_offset,
             sorted_idxs=sorted_idxs,
             scattered_idxs=scattered_idxs,
+            intermediate_output=intermediate_output,
+            router_weights=router_weights,
             output=output,
             T=T,
             H=H,
             K=K,
-            ATOMIC_ADD=False,
         )
 
-        ctx.save_for_backward(expert_padding_offset, sorted_idxs, scattered_idxs, output, router_weights)
+        output = output.type_as(x)
 
-        output = torch.bmm(router_weights.unsqueeze(1), output)
-        output = output.squeeze(1)
-
+        ctx.save_for_backward(expert_padding_offset, sorted_idxs, scattered_idxs, intermediate_output, router_weights)
         ctx.x_shape = x.size()
         ctx.pad_to_multiple_of = pad_to_multiple_of
         ctx.K = K
