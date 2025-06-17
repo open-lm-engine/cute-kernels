@@ -47,6 +47,7 @@ def continuous_count_cute(
         output = bincount(x=x, minlength=size).to(torch.uint32)
     elif kernel_backend == KernelBackend.cuda:
         output = torch.empty(size, dtype=torch.uint32, device=x.device)
+
         continuous_count_cuda(
             x=x,
             output=output,
