@@ -18,6 +18,7 @@ from .ops import (
     add_scalar_cute,
     add_tensor_cute,
     bmm_cute,
+    continuous_count_and_sort_cute,
     continuous_count_cute,
     cross_entropy_cute,
     fused_linear_cross_entropy_cute,

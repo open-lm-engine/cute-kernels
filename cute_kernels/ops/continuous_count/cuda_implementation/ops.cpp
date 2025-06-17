@@ -6,6 +6,8 @@
 
 void continuous_count_cuda(const torch::Tensor &x,
                            torch::Tensor &output,
+                           std::optional<torch::Tensor> &_sorted_output,
+                           std::optional<torch::Tensor> &_sorted_indices,
                            const uint &C,
                            const uint &THREAD_BLOCK_CLUSTER_SIZE,
                            const uint &BLOCK_SIZE);

@@ -82,8 +82,13 @@ inline __device__ uint32 *_get_shared_memory(const uint32 &local_thread_id, cons
     return shared_memory;
 }
 
-template <typename scalar_t>
-__global__ void continuous_count_cuda_kernel(const scalar_t *x, uint32 *output, const uint64 N, const uint32 C) {
+template <typename scalar_t, bool do_sort>
+__global__ void continuous_count_cuda_kernel(const scalar_t *x,
+                                             uint32 *output,
+                                             scalar_t *sorted_output,
+                                             uint64 *sorted_indices,
+                                             const uint64 N,
+                                             const uint32 C) {
     const uint32 global_thread_id = blockIdx.x * blockDim.x + threadIdx.x;
 
     uint32 *shared_memory = _get_shared_memory<scalar_t>(threadIdx.x, C);
@@ -114,6 +119,8 @@ __global__ void continuous_count_cuda_kernel(const scalar_t *x, uint32 *output, 
 
 void continuous_count_cuda(const torch::Tensor &x,
                            torch::Tensor &output,
+                           std::optional<torch::Tensor> &_sorted_output,
+                           std::optional<torch::Tensor> &_sorted_indices,
                            const uint32 &C,
                            const uint32 &THREAD_BLOCK_CLUSTER_SIZE,
                            const uint32 &BLOCK_SIZE) {
@@ -127,13 +134,23 @@ void continuous_count_cuda(const torch::Tensor &x,
     const uint64 N = x.numel();
     CHECK_WITHIN_UINT32(N);
 
+    const bool do_sort = _sorted_output.has_value();
+
+    TORCH_CHECK(_sorted_indices.has_value() == do_sort);
+
     const uint32 num_SMs = ck::get_num_SMs();
     const uint32 max_num_blocks = ck::get_max_thread_blocks(num_SMs, THREAD_BLOCK_CLUSTER_SIZE);
 
     DISPATCH_INT_KERNEL(x.scalar_type(), "continuous_count_cuda_kernel", scalar_t, ([&] {
-                            cudaFuncSetAttribute(continuous_count_cuda_kernel<scalar_t>,
-                                                 cudaFuncAttributeMaxDynamicSharedMemorySize,
-                                                 MAX_ALLOWED_C * sizeof(uint32));
+                            if (do_sort) {
+                                cudaFuncSetAttribute(continuous_count_cuda_kernel<scalar_t, true>,
+                                                     cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                                     MAX_ALLOWED_C * sizeof(uint32));
+                            } else {
+                                cudaFuncSetAttribute(continuous_count_cuda_kernel<scalar_t, false>,
+                                                     cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                                     MAX_ALLOWED_C * sizeof(uint32));
+                            }
 
                             auto [NUM_BLOCKS, cluster_size] =
                                 ck::get_num_blocks(N, BLOCK_SIZE, max_num_blocks, THREAD_BLOCK_CLUSTER_SIZE);
@@ -158,9 +175,12 @@ void continuous_count_cuda(const torch::Tensor &x,
                             launch_config.numAttrs = 2;
 
                             cudaLaunchKernelEx(&launch_config,
-                                               continuous_count_cuda_kernel<scalar_t>,
+                                               do_sort ? continuous_count_cuda_kernel<scalar_t, true>
+                                                       : continuous_count_cuda_kernel<scalar_t, false>,
                                                x.data_ptr<scalar_t>(),
                                                output.data_ptr<uint32>(),
+                                               do_sort ? sorted_output.data_ptr<scalar_t>() : nullptr,
+                                               do_sort ? sorted_indices.data_ptr<scalar_t>() : nullptr,
                                                N,
                                                C);
                         }));
