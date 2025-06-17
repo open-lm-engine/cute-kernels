@@ -180,7 +180,7 @@ void continuous_count_cuda(const torch::Tensor &x,
                                                x.data_ptr<scalar_t>(),
                                                output.data_ptr<uint32>(),
                                                do_sort ? sorted_output.value().data_ptr<scalar_t>() : nullptr,
-                                               do_sort ? sorted_indices.value().data_ptr<scalar_t>() : nullptr,
+                                               do_sort ? sorted_indices.value().data_ptr<uint64>() : nullptr,
                                                N,
                                                C);
                         }));
