@@ -9,7 +9,6 @@ void continuous_count_cuda(const torch::Tensor &x,
                            std::optional<torch::Tensor> &_sorted_output,
                            std::optional<torch::Tensor> &_sorted_indices,
                            const uint &E,
-                           const uint &THREAD_BLOCK_CLUSTER_SIZE,
                            const uint &BLOCK_SIZE);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {

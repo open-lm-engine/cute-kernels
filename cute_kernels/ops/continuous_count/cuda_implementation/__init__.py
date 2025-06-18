@@ -17,6 +17,5 @@ def continuous_count_cuda(
     sorted_output: torch.Tensor | None,
     sorted_indices: torch.Tensor | None,
     E: int,
-    THREAD_BLOCK_CLUSTER_SIZE: int,
     BLOCK_SIZE: int,
 ) -> None: ...

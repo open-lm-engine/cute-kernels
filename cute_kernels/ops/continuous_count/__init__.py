@@ -54,7 +54,6 @@ def continuous_count_cute(
             sorted_output=None,
             sorted_indices=None,
             E=size,
-            THREAD_BLOCK_CLUSTER_SIZE=1,
             BLOCK_SIZE=1024,
         )
     else:
@@ -101,7 +100,6 @@ def continuous_count_and_sort_cute(
             sorted_output=sorted_output,
             sorted_indices=sorted_indices,
             C=size,
-            THREAD_BLOCK_CLUSTER_SIZE=1,
             BLOCK_SIZE=1024,
         )
     else:
