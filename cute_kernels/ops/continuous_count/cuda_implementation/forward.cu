@@ -131,11 +131,11 @@ void continuous_count_cuda(const torch::Tensor &x,
                             if (do_sort) {
                                 cudaFuncSetAttribute(continuous_count_cuda_kernel<scalar_t, true>,
                                                      cudaFuncAttributeMaxDynamicSharedMemorySize,
-                                                     MAX_ALLOWED_E * sizeof(uint32));
+                                                     E * sizeof(uint32));
                             } else {
                                 cudaFuncSetAttribute(continuous_count_cuda_kernel<scalar_t, false>,
                                                      cudaFuncAttributeMaxDynamicSharedMemorySize,
-                                                     MAX_ALLOWED_E * sizeof(uint32));
+                                                     E * sizeof(uint32));
                             }
 
                             // dynamically sized clusters need this stupid way of launching the kernel
