@@ -104,16 +104,7 @@ __global__ void continuous_count_cuda_kernel(const scalar_t *x,
 
     __syncthreads();
 
-    if (!is_first_cluster_block) {
-        _looped_atomic_add(shared_memory, cluster.map_shared_rank(shared_memory, 0), E);
-    }
-
-    cluster.sync();
-
-    // write the output to the global memory
-    if (is_first_cluster_block) {
-        _looped_atomic_add(shared_memory, output, E);
-    }
+    _looped_atomic_add(shared_memory, output, E);
 }
 
 void continuous_count_cuda(const torch::Tensor &x,
