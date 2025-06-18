@@ -25,7 +25,7 @@ table = []
 E = 64
 N = 64 * 4096
 
-for dtype in [torch.uint32, torch.uint64]:
+for dtype in [torch.int32, torch.long]:
     # output is uint32
     io = torch.tensor([], dtype=dtype).element_size() * N + 4 * E
 
