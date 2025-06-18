@@ -125,7 +125,7 @@ void continuous_count_cuda(const torch::Tensor &x,
     TORCH_CHECK(_sorted_indices.has_value() == do_sort);
 
     const uint32 num_SMs = ck::get_num_SMs();
-    const uint32 max_num_blocks = num_SMs;
+    auto [NUM_BLOCKS, cluster_size] = ck::get_num_blocks(N, BLOCK_SIZE, num_SMs);
 
     DISPATCH_INT_KERNEL(x.scalar_type(), "continuous_count_cuda_kernel", scalar_t, ([&] {
                             if (do_sort) {
@@ -137,8 +137,6 @@ void continuous_count_cuda(const torch::Tensor &x,
                                                      cudaFuncAttributeMaxDynamicSharedMemorySize,
                                                      MAX_ALLOWED_E * sizeof(uint32));
                             }
-
-                            auto [NUM_BLOCKS, cluster_size] = ck::get_num_blocks(N, BLOCK_SIZE, max_num_blocks);
 
                             // dynamically sized clusters need this stupid way of launching the kernel
                             cudaLaunchConfig_t launch_config = {0};
