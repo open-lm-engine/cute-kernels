@@ -53,7 +53,7 @@ def continuous_count_cute(
             output=output,
             sorted_output=None,
             sorted_indices=None,
-            C=size,
+            E=size,
             THREAD_BLOCK_CLUSTER_SIZE=1,
             BLOCK_SIZE=1024,
         )
