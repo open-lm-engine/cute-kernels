@@ -70,10 +70,10 @@ inline __device__ void _update_local_count(const scalar_t *x,
 }
 
 template <typename scalar_t>
-inline __device__ uint32 *_get_shared_memory(const uint32 &local_thread_id, const uint32 &C) {
+inline __device__ uint32 *_get_shared_memory(const uint32 &C) {
     extern __shared__ uint32 shared_memory[];
 
-    uint32 index = local_thread_id;
+    uint32 index = threadIdx.x;
     while (index < C) {
         shared_memory[index] = 0;
         index += blockDim.x;
@@ -89,10 +89,9 @@ __global__ void continuous_count_cuda_kernel(const scalar_t *x,
                                              uint64 *sorted_indices,
                                              const uint64 N,
                                              const uint32 C) {
+    uint32 *shared_memory = _get_shared_memory<scalar_t>(C);
+
     const uint32 global_thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-
-    uint32 *shared_memory = _get_shared_memory<scalar_t>(threadIdx.x, C);
-
     const uint32 grid_size = gridDim.x * blockDim.x;
 
     _initialize_global_output(output, C, global_thread_id, grid_size);
