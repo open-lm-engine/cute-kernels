@@ -88,7 +88,7 @@ __global__ void continuous_count_cuda_kernel(const scalar_t *x,
                                              scalar_t *sorted_output,
                                              uint64 *sorted_indices,
                                              const uint64 N,
-                                             const uint32 C) {
+                                             const uint32 E) {
     uint32 *shared_memory = _get_shared_memory<scalar_t>(E);
 
     const uint32 global_thread_id = blockIdx.x * blockDim.x + threadIdx.x;
