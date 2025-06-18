@@ -15,7 +15,7 @@ torch.backends.cuda.matmul.allow_tf32 = True
 
 n = 100
 
-headers = ["dtype", "torch BW", "CUDA BW"]
+headers = ["dtype", "torch msec", "CUDA msec"]
 kernels = [
     partial(continuous_count_cute, kernel_backend=KernelBackend.torch),
     partial(continuous_count_cute, kernel_backend=KernelBackend.cuda),
@@ -46,8 +46,8 @@ for dtype in [torch.int32, torch.long]:
 
         device_synchronize()
 
-        t = s.elapsed_time(e) / n / 1e3
-        row.append(io / t / 1e12)
+        t = s.elapsed_time(e) / n
+        row.append(t)
 
     table.append(row)
 
