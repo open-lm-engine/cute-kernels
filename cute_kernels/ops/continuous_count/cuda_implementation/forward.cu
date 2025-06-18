@@ -99,9 +99,6 @@ __global__ void continuous_count_cuda_kernel(const scalar_t *x,
 
     _update_local_count<scalar_t>(x, shared_memory, N, global_thread_id, grid_size);
 
-    cg::cluster_group cluster = cg::this_cluster();
-    const bool is_first_cluster_block = cluster.block_rank() == 0;
-
     __syncthreads();
 
     _looped_atomic_add(shared_memory, output, E);
