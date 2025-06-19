@@ -144,18 +144,13 @@ void continuous_count_cuda(const torch::Tensor &x,
                             launch_config.gridDim = NUM_BLOCKS;
                             launch_config.dynamicSmemBytes = E * sizeof(uint32);
 
-                            cudaLaunchAttribute attributes[2];
+                            cudaLaunchAttribute attributes[1];
 
-                            attributes[0].id = cudaLaunchAttributeClusterDimension;
-                            attributes[0].val.clusterDim.x = cluster_size;
-                            attributes[0].val.clusterDim.y = 1;
-                            attributes[0].val.clusterDim.z = 1;
-
-                            attributes[1].id = cudaLaunchAttributeCooperative;
-                            attributes[1].val.cooperative = 1;
+                            attributes[0].id = cudaLaunchAttributeCooperative;
+                            attributes[0].val.cooperative = 1;
 
                             launch_config.attrs = attributes;
-                            launch_config.numAttrs = 2;
+                            launch_config.numAttrs = 1;
 
                             cudaLaunchKernelEx(&launch_config,
                                                do_sort ? continuous_count_cuda_kernel<scalar_t, true>
