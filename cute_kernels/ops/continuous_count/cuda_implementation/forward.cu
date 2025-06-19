@@ -20,7 +20,7 @@ using int64 = ck::int64;
 using uint32 = ck::uint32;
 using uint64 = ck::uint64;
 
-inline __device__ void _looped_atomic_add(uint32 *source, uint32 *destination, const uint32 &E) {
+inline __device__ void _update_global_output(uint32 *source, uint32 *destination, const uint32 &E) {
     uint32 index = threadIdx.x;
     while (index < E) {
         atomicAdd(&destination[index], source[index]);
@@ -32,15 +32,14 @@ inline __device__ void _initialize_global_output(uint32 *output,
                                                  const uint32 &E,
                                                  const uint32 &global_thread_id,
                                                  const uint32 &total_threads) {
-    const uint32 E4 = E >> 2;
-
+    const uint32 E_vec = E >> 2;
     uint32 init_value[] = {0, 0, 0, 0};
 
-    for (uint32 i = global_thread_id; i < E4; i += total_threads) {
+    for (uint32 i = global_thread_id; i < E_vec; i += total_threads) {
         ck_mem::store_128_bits<uint32>(init_value, output, i);
     }
 
-    const uint32 index = (E4 << 2) + global_thread_id;
+    const uint32 index = (E_vec << 2) + global_thread_id;
     if (index < E) {
         output[index] = 0;
     }
@@ -101,7 +100,7 @@ __global__ void continuous_count_cuda_kernel(const scalar_t *x,
 
     __syncthreads();
 
-    _looped_atomic_add(shared_memory, output, E);
+    _update_global_output(shared_memory, output, E);
 }
 
 void continuous_count_cuda(const torch::Tensor &x,
