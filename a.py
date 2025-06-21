@@ -7,7 +7,7 @@ import time
 import torch
 import torch.nn.functional as F
 
-from .cute_kernels.modules.memory import embedding_bag_cute
+from cute_kernels.modules.memory import embedding_bag_cute
 
 
 if __name__ == "__main__":
