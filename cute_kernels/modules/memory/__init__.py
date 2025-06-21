@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...kernel_backend import KernelBackend
-from .triton_implementation import embedding_bag_triton
+from .triton_implementation import embedding_bag_cute
 
 
 class EmbeddingBag(nn.EmbeddingBag):
@@ -23,7 +23,7 @@ class EmbeddingBag(nn.EmbeddingBag):
         self, indices: torch.Tensor, scores: torch.Tensor, kernel_backend: KernelBackend = KernelBackend.triton
     ) -> torch.Tensor:
         if kernel_backend == KernelBackend.triton:
-            output = embedding_bag_triton(input=indices, weight=self.weight, per_sample_weights=scores, mode="sum")
+            output = embedding_bag_cute(input=indices, weight=self.weight, per_sample_weights=scores, mode="sum")
         elif kernel_backend == KernelBackend.torch:
             output = F.embedding_bag(input=indices, weight=self.weight, per_sample_weights=scores, mode="sum")
         else:
@@ -151,7 +151,7 @@ class HashingMemory(nn.Module):
         # initialize the values
         if self.original:
             if not self.use_peer_variant:  # PK
-                self.values = xFormerEmbeddingBag(self.size, self.v_dim)
+                self.values = EmbeddingBag(self.size, self.v_dim)
                 HashingMemory.VALUES = self.values
             else:  # PEER
                 self.values_u = nn.Embedding(self.size, self.v_dim)

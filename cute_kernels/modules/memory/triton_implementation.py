@@ -9,11 +9,10 @@ from typing import Tuple
 import torch
 import triton
 import triton.language as tl
-from torch.distributed.tensor import DTensor, Partial, Shard
 
 
 @triton.jit
-def embedding_bag_k(
+def embedding_bag_k_triton_kernel(
     out_ptr,  # [B, dim]
     indices_ptr,  # [B, bag_size]
     weight_ptr,  # [n_keys**2, dim]
@@ -23,27 +22,24 @@ def embedding_bag_k(
 ):
     out_idx = tl.program_id(axis=0).to(tl.int64)
     out_value = tl.zeros([dim], dtype=tl.float32)
+
     for bag in range(0, bag_size):
         my_index = tl.load(indices_ptr + out_idx * bag_size + bag).to(tl.int64)
         my_scaling = tl.load(per_sample_weights + out_idx * bag_size + bag)
         my_weight = tl.load(weight_ptr + tl.arange(0, dim) + my_index * dim)
+
         out_value = out_value + my_weight.to(tl.float32) * my_scaling
+
     tl.store(out_ptr + out_idx * dim + tl.arange(0, dim), out_value)
 
 
-def embedding_bag_triton(
+def embedding_bag_k_triton(
     indices: torch.Tensor, weight: torch.Tensor, per_sample_weights: torch.Tensor
 ) -> torch.Tensor:
-    distributed = isinstance(indices, DTensor)
-    if distributed:
-        mesh = weight.device_mesh
-        indices = indices.to_local()
-        weight = weight.to_local()
-        per_sample_weights = per_sample_weights.to_local()
     trt_out = torch.empty([indices.shape[0], weight.shape[1]], dtype=weight.dtype, device=weight.device)
     grid = (indices.shape[0],)
 
-    embedding_bag_k[grid](
+    embedding_bag_k_triton_kernel[grid](
         trt_out,
         indices,
         weight,
@@ -53,8 +49,7 @@ def embedding_bag_triton(
         num_warps=1,
         num_stages=1,
     )
-    if distributed:
-        trt_out = DTensor.from_local(trt_out, mesh, (Shard(-1),), run_check=False)
+
     return trt_out
 
 
@@ -255,13 +250,6 @@ def embedding_bag_bw_rev_indices(
     gradient: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     # Returns: [weight.grad, per_sample_weights.grad]
-    distributed = isinstance(indices, DTensor)
-    if distributed:
-        mesh = weight.device_mesh
-        indices = indices.to_local()
-        weight = weight.to_local()
-        per_sample_weights = per_sample_weights.to_local()
-        gradient = gradient.to_local()
 
     K, dim = weight.shape
     B, bag_size = indices.shape
@@ -298,15 +286,11 @@ def embedding_bag_bw_rev_indices(
         BLOCK_SIZE=BLOCK_SIZE,
         num_warps=1,
     )
-    if distributed:
-        weight_grad = DTensor.from_local(weight_grad, mesh, (Shard(-1),), run_check=False)
-        per_sample_weights_grad = DTensor.from_local(
-            per_sample_weights_grad, mesh, (Partial(reduce_op="sum"),), run_check=False
-        )
+
     return weight_grad, per_sample_weights_grad
 
 
-class xFormersEmbeddingBag(torch.autograd.Function):
+class _EmbeddingBag_Cute(torch.autograd.Function):
     @staticmethod
     def forward(
         ctx,
@@ -317,7 +301,7 @@ class xFormersEmbeddingBag(torch.autograd.Function):
     ) -> torch.Tensor:
         ctx.save_for_backward(indices, weight, per_sample_weights)
         ctx.bw_algo = bw_algo
-        return embedding_bag_triton(indices, weight, per_sample_weights)
+        return embedding_bag_k_triton(indices, weight, per_sample_weights)
 
     @staticmethod
     def backward(ctx, gradient):
@@ -339,10 +323,11 @@ class xFormersEmbeddingBag(torch.autograd.Function):
                 per_sample_weights,
                 gradient,
             )
+
         return None, weight_g, per_sample_weights_g, None
 
 
-def embedding_bag_triton(
+def embedding_bag_cute(
     indices: torch.Tensor,
     weight: torch.Tensor,
     per_sample_weights: torch.Tensor,
@@ -350,4 +335,4 @@ def embedding_bag_triton(
     bw_algo: str = "reverse_indices",
 ) -> torch.Tensor:
     assert mode == "sum"
-    return xFormersEmbeddingBag.apply(indices, weight, per_sample_weights, bw_algo)
+    return _EmbeddingBag_Cute.apply(indices, weight, per_sample_weights, bw_algo)
