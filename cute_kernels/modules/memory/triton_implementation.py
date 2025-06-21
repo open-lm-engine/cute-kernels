@@ -406,7 +406,7 @@ class xFormersEmbeddingBag(torch.autograd.Function):
         return None, weight_g, per_sample_weights_g, None
 
 
-def xformers_embedding_bag(
+def embedding_bag_triton(
     indices: torch.Tensor,
     weight: torch.Tensor,
     per_sample_weights: torch.Tensor,

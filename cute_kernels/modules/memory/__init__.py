@@ -19,21 +19,17 @@ from torch.distributed.tensor.parallel import parallelize_module
 from torch.nn import functional as F
 
 from ...kernel_backend import KernelBackend
-from .a import xformers_embedding_bag
+from .triton_implementation import embedding_bag_triton
 
 
-class EmbeddingBag(nn.Module):
-    def __init__(self, size, dim):
-        super().__init__()
-        self.weight = nn.Parameter(torch.empty(size, dim))
-
+class EmbeddingBag(nn.EmbeddingBag):
     def forward(
         self, indices: torch.Tensor, scores: torch.Tensor, kernel_backend: KernelBackend = KernelBackend.triton
     ) -> torch.Tensor:
         if kernel_backend == KernelBackend.triton:
-            output = xformers_embedding_bag(indices, self.weight, per_sample_weights=scores, mode="sum")
+            output = embedding_bag_triton(input=indices, weight=self.weight, per_sample_weights=scores, mode="sum")
         elif kernel_backend == KernelBackend.torch:
-            output = F.embedding_bag(indices, self.weight, per_sample_weights=scores, mode="sum")
+            output = F.embedding_bag(input=indices, weight=self.weight, per_sample_weights=scores, mode="sum")
         else:
             raise ValueError(f"unexpected kernel_backend ({kernel_backend})")
 
