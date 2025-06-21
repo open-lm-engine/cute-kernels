@@ -187,7 +187,7 @@ class _EmbeddingBag_Cute(torch.autograd.Function):
 
 
 def embedding_bag_cute(
-    indices: torch.Tensor, weight: torch.Tensor, per_sample_weights: torch.Tensor, mode: str = "sum"
+    input: torch.Tensor, weight: torch.Tensor, per_sample_weights: torch.Tensor, mode: str = "sum"
 ) -> torch.Tensor:
     assert mode == "sum"
-    return _EmbeddingBag_Cute.apply(indices, weight, per_sample_weights)
+    return _EmbeddingBag_Cute.apply(input, weight, per_sample_weights)

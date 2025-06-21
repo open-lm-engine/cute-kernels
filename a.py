@@ -3,11 +3,12 @@
 # **************************************************
 
 import time
+from functools import partial
 
 import torch
-import torch.nn.functional as F
 
-from cute_kernels.modules.memory import embedding_bag_cute
+from cute_kernels import KernelBackend
+from cute_kernels.modules.memory import EmbeddingBag
 
 
 if __name__ == "__main__":
@@ -19,30 +20,36 @@ if __name__ == "__main__":
     print(f"{B=} {K=} {bag_size=} {dim=}")
     torch.manual_seed(0)
     torch.set_default_device("cuda")
-    torch.set_default_dtype(torch.bfloat16)
+    # torch.set_default_dtype(torch.bfloat16)
     indices = torch.randint(0, K, [B, 10])
+
+    model = EmbeddingBag(K, dim)
+
     # indices = torch.randint(0, K, [B, bag_size])
-    weight = torch.randn([K, dim], requires_grad=True)
     per_sample_weights = torch.randn(indices.shape, requires_grad=True)
     gradient = torch.randn([B, dim])
     # Torch impl
-    out_torch = F.embedding_bag(indices, weight, per_sample_weights=per_sample_weights, mode="sum")
+    out_torch = model(indices, per_sample_weights, kernel_backend=KernelBackend.torch)
     out_torch.backward(gradient)
-    wg = weight.grad
+    wg = model.weight.grad
     wpsg = per_sample_weights.grad
-    weight.grad = per_sample_weights.grad = None
+
+    model.weight.grad = per_sample_weights.grad = None
     # xFormers impl
-    out_xf = embedding_bag_cute(indices, weight, per_sample_weights)
+    out_xf = model(indices, per_sample_weights, kernel_backend=KernelBackend.triton)
     out_xf.backward(gradient)
 
     assert torch.allclose(out_torch, out_xf)
-    assert torch.allclose(wg, weight.grad, atol=5e-2, rtol=1e-2)
+    assert torch.allclose(wg, model.weight.grad, atol=5e-2, rtol=1e-2)
     assert torch.allclose(wpsg, per_sample_weights.grad, atol=5e-2, rtol=1e-2)
 
     print("Correctness: PASS")
 
-    for op, op_name in [(F.embedding_bag, "F.embedding_bag"), (embedding_bag_cute, "xformers_embedding_bag")]:
-        fn = lambda: op(indices, weight, per_sample_weights=per_sample_weights, mode="sum").backward(gradient)
+    for op, op_name in [
+        (partial(model, kernel_backend=KernelBackend.torch), "F.embedding_bag"),
+        (partial(model, kernel_backend=KernelBackend.triton), "xformers_embedding_bag"),
+    ]:
+        fn = lambda: op(indices, scores=per_sample_weights).backward(gradient)
         fn()
         # time
         REPEATS = 10
