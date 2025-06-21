@@ -194,46 +194,6 @@ class HashingMemory(nn.Module):
             batchnorm=mem_query_batchnorm,
         )
 
-    def mp_parallelize(self, mesh, model_args, distributed_args, param_dtype):
-        fsdp_config = dict(
-            mp_policy=(
-                MixedPrecisionPolicy(
-                    param_dtype=param_dtype,
-                    # reduce_dtype=torch.float32,
-                    reduce_dtype=torch.bfloat16,
-                )
-            ),
-            mesh=mesh["dp_replicate"],
-        )
-        # parallelize the module
-        if distributed_args.memory_parallel_size > 1:
-            assert not self.use_peer_variant, f"The PEER variant does not have a memory parallel implementation"
-            if self.original:
-                layer_plan = {"values": ColwiseEmbeddingBag()}
-                parallelize_module(
-                    self,
-                    mesh["memory_parallel"],
-                    layer_plan,
-                )
-
-        # share the parameters
-        if self.original:
-            if not self.use_peer_variant:
-                self.values = fully_shard(self.values, **fsdp_config, reshard_after_forward=False)
-            else:
-                self.values_u = fully_shard(self.values_u, **fsdp_config, reshard_after_forward=False)
-                self.values_v = fully_shard(self.values_v, **fsdp_config, reshard_after_forward=False)
-        if self.mem_share_values and self.original:
-            if not self.use_peer_variant:
-                HashingMemory.VALUES = self.values
-            else:
-                HashingMemory.VALUES = self.values_u, self.values_v
-        if self.mem_share_values and not self.original:
-            if not self.use_peer_variant:
-                self.values = HashingMemory.VALUES
-            else:
-                self.values_u, self.values_v = HashingMemory.VALUES
-
     def reset_parameters(self, init_std=None, factor=1.0):
         # keys
         bound = 1 / math.sqrt(self.k_dim)
