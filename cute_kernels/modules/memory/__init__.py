@@ -169,13 +169,13 @@ class HashingMemory(nn.Module):
             proj_input = mem_v_dim
             if self.swilu_proj and proj_input < 0:
                 proj_input = output_dim
-            self.value_proj = torch.nn.Linear(proj_input, output_dim)
+            self.value_proj = nn.Linear(proj_input, output_dim)
         if self.swilu_proj:
-            self.swilu_projection = torch.nn.Linear(self.input_dim, proj_input)
+            self.swilu_projection = nn.Linear(self.input_dim, proj_input)
         # gated memory
         self.gating = None
         if mem_gated:
-            self.gating = torch.nn.Linear(input_dim, 1)
+            self.gating = nn.Linear(input_dim, 1)
 
         # query network
         # layer sizes / number of features
