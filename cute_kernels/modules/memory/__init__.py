@@ -362,16 +362,14 @@ class QueryMLP(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, input):
-        """
-        Compute queries using either grouped 1D convolutions or ModuleList + concat.
-        """
-        assert input.shape[-1] == self.input_dim
-        input = input.contiguous().view(-1, self.input_dim) if input.dim() > 2 else input
-        bs = len(input)
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        if input.dim() > 2:
+            input = input.reshape(-1, self.input_dim)
+
+        B = input.size(0)
 
         outputs = [m(input) for m in self.query_mlps]
         query = torch.cat(outputs, 1) if len(outputs) > 1 else outputs[0]
 
-        assert query.shape == (bs, self.heads * self.k_dim)
-        return query.view(bs * self.heads, self.k_dim)
+        assert query.size() == (B, self.heads * self.k_dim)
+        return query.view(B * self.heads, self.k_dim)
