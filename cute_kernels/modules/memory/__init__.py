@@ -14,8 +14,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import nn
-from torch.distributed._composable.fsdp import MixedPrecisionPolicy, fully_shard
-from torch.distributed.tensor.parallel import parallelize_module
 from torch.nn import functional as F
 
 from ...kernel_backend import KernelBackend
