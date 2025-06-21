@@ -54,126 +54,6 @@ def embedding_bag_k_triton(
 
 
 @triton.jit
-def embedding_bag_bw_k2(
-    weight_grad_signaling_ptr,  # [K]
-    weight_grad_ptr,  # [K, dim]
-    per_sample_weights_grad_ptr,  # [B, bag_size]
-    indices_ptr,  # [B, bag_size]
-    weight_ptr,  # [K, dim]
-    per_sample_weights_ptr,  # [B, bag_size]
-    gradient_ptr,  # [B, dim]
-    dim: tl.constexpr,
-    bag_size: tl.constexpr,
-    USE_ATOMICS: tl.constexpr,
-):
-    batch_id = tl.program_id(axis=0).to(tl.int64)
-    gradient = tl.load(gradient_ptr + batch_id * dim + tl.arange(0, dim))
-    gradient = gradient.to(tl.float32)
-    for bag in range(bag_size):
-        my_index = tl.load(indices_ptr + batch_id * bag_size + bag).to(tl.int64)
-        my_scaling = tl.load(per_sample_weights_ptr + batch_id * bag_size + bag)
-        my_weight = tl.load(weight_ptr + my_index * dim + tl.arange(0, dim))
-        my_weight = my_weight.to(tl.float32)
-        weight_grad = gradient * my_scaling
-        per_sample_weights_grad = gradient * my_weight
-        per_sample_weights_grad = tl.sum(per_sample_weights_grad)
-        if USE_ATOMICS:
-            addr = weight_grad_ptr + my_index * dim + tl.arange(0, dim)
-            tl.atomic_add(
-                addr,
-                weight_grad,
-                sem="relaxed",
-            )
-        else:
-            # Get lock for `weight.grad` row
-            old_val_sign = tl.atomic_or(weight_grad_signaling_ptr + my_index, 1, sem="acquire")
-            while (old_val_sign & 1) == 1:
-                old_val_sign = tl.atomic_or(weight_grad_signaling_ptr + my_index, 1, sem="acquire")
-            if old_val_sign & 2:  # already initialized
-                old_val = tl.load(weight_grad_ptr + my_index * dim + tl.arange(0, dim)).to(tl.float32)
-            else:
-                old_val = tl.zeros([dim], dtype=tl.float32)
-            tl.store(
-                weight_grad_ptr + my_index * dim + tl.arange(0, dim),
-                weight_grad + old_val.to(tl.float32),
-            )
-            tl.atomic_xchg(weight_grad_signaling_ptr + my_index, 2, sem="release")  # < Release lock
-        tl.store(
-            per_sample_weights_grad_ptr + batch_id * bag_size + bag,
-            per_sample_weights_grad,
-        )
-
-
-@triton.jit
-def embedding_bag_init_where_needed_k(
-    weight_grad_signaling_ptr,  # [K]
-    weight_grad_ptr,  # [K, dim]
-    dim: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    key_id = tl.program_id(axis=0).to(tl.int64) * BLOCK_SIZE
-    for i in range(BLOCK_SIZE):
-        val = tl.load(weight_grad_signaling_ptr + key_id + i)
-        if val == 0:
-            tl.store(
-                weight_grad_ptr + (key_id + i) * dim + tl.arange(0, dim),
-                tl.zeros([dim], dtype=tl.float32),
-            )
-
-
-def embedding_bag_bw2(
-    indices: torch.Tensor,
-    weight: torch.Tensor,
-    per_sample_weights: torch.Tensor,
-    gradient: torch.Tensor,
-    use_atomics: bool,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    # Returns: [weight.grad, per_sample_weights.grad]
-    K, dim = weight.shape
-    B, bag_size = indices.shape
-    weight_grad_signaling = torch.empty((K,), dtype=torch.uint32, device=indices.device)
-    if not use_atomics:
-        weight_grad_signaling.fill_(0)
-    weight_grad = torch.empty_like(weight)
-    if use_atomics:
-        weight_grad.fill_(0)
-    per_sample_weights_grad = torch.empty_like(per_sample_weights)
-    assert indices.is_contiguous()
-    assert weight.is_contiguous()
-    assert per_sample_weights.is_contiguous()
-    assert gradient.is_contiguous()
-    assert indices.shape == (B, bag_size)
-    assert weight.shape == (K, dim)
-    assert per_sample_weights.shape == (B, bag_size)
-    assert gradient.shape == (B, dim)
-    embedding_bag_bw_k2[(B,)](
-        weight_grad_signaling,
-        weight_grad,
-        per_sample_weights_grad,
-        indices,
-        weight,
-        per_sample_weights,
-        gradient,
-        dim=dim,
-        bag_size=bag_size,
-        num_warps=1,
-        USE_ATOMICS=True,  # use_atomics,
-    )
-    if not use_atomics:
-        BLOCK_SIZE = 16
-        if K % BLOCK_SIZE:
-            BLOCK_SIZE = 1
-        embedding_bag_init_where_needed_k[(K // BLOCK_SIZE,)](
-            weight_grad_signaling,
-            weight_grad,
-            dim=dim,
-            num_warps=1,
-            BLOCK_SIZE=BLOCK_SIZE,
-        )
-    return weight_grad, per_sample_weights_grad
-
-
-@triton.jit
 def count_per_embedding_k(
     count_per_emb_ptr,  # [K+1] (out)
     indices_ptr,  # [B, bag_size]
@@ -182,11 +62,7 @@ def count_per_embedding_k(
     batch_id = tl.program_id(axis=0).to(tl.int64)
     for i in range(bag_size):
         embedding_id = tl.load(indices_ptr + batch_id * bag_size + i)
-        tl.atomic_add(
-            count_per_emb_ptr + embedding_id + 1,
-            1,
-            sem="relaxed",
-        )
+        tl.atomic_add(count_per_emb_ptr + embedding_id + 1, 1, sem="relaxed")
 
 
 @triton.jit
@@ -292,47 +168,26 @@ def embedding_bag_bw_rev_indices(
 
 class _EmbeddingBag_Cute(torch.autograd.Function):
     @staticmethod
-    def forward(
-        ctx,
-        indices: torch.Tensor,
-        weight: torch.Tensor,
-        per_sample_weights: torch.Tensor,
-        bw_algo: bool,
-    ) -> torch.Tensor:
+    def forward(ctx, indices: torch.Tensor, weight: torch.Tensor, per_sample_weights: torch.Tensor) -> torch.Tensor:
         ctx.save_for_backward(indices, weight, per_sample_weights)
-        ctx.bw_algo = bw_algo
         return embedding_bag_k_triton(indices, weight, per_sample_weights)
 
     @staticmethod
     def backward(ctx, gradient):
         indices, weight, per_sample_weights = ctx.saved_tensors
-        if ctx.bw_algo in ["lock", "atomics"]:
-            # TODO : Remove lock and atomics and only keep reverse_indices
-            weight_g, per_sample_weights_g = embedding_bag_bw2(
-                indices,
-                weight,
-                per_sample_weights,
-                gradient,
-                use_atomics=ctx.bw_algo == "atomics",
-            )
-        else:
-            assert ctx.bw_algo == "reverse_indices"
-            weight_g, per_sample_weights_g = embedding_bag_bw_rev_indices(
-                indices,
-                weight,
-                per_sample_weights,
-                gradient,
-            )
+
+        weight_g, per_sample_weights_g = embedding_bag_bw_rev_indices(
+            indices,
+            weight,
+            per_sample_weights,
+            gradient,
+        )
 
         return None, weight_g, per_sample_weights_g, None
 
 
 def embedding_bag_cute(
-    indices: torch.Tensor,
-    weight: torch.Tensor,
-    per_sample_weights: torch.Tensor,
-    mode: str = "sum",
-    bw_algo: str = "reverse_indices",
+    indices: torch.Tensor, weight: torch.Tensor, per_sample_weights: torch.Tensor, mode: str = "sum"
 ) -> torch.Tensor:
     assert mode == "sum"
-    return _EmbeddingBag_Cute.apply(indices, weight, per_sample_weights, bw_algo)
+    return _EmbeddingBag_Cute.apply(indices, weight, per_sample_weights)
