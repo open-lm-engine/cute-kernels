@@ -13,8 +13,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import nn
-from torch.nn import functional as F
 
 from ...kernel_backend import KernelBackend
 from .triton_implementation import embedding_bag_triton

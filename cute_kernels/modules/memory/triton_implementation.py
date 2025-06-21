@@ -4,76 +4,12 @@
 
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import time
 from typing import Tuple
 
 import torch
-import torch.nn.functional as F
 import triton
 import triton.language as tl
 from torch.distributed.tensor import DTensor, Partial, Shard
-
-
-class CustomEmbeddingBagFunction(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, indices, weight, per_sample_weights, mode="sum", backward_chunks=1):
-        assert mode == "sum", "CustomEmbeddingBagFunction only implements SUM mode for now."
-        # Save for backward (storing indices for backprop)
-        ctx.save_for_backward(indices, weight, per_sample_weights)
-        ctx.backward_chunks = backward_chunks
-        return F.embedding_bag(
-            indices, weight, per_sample_weights=per_sample_weights, mode="sum"
-        )  # (bs * MemP, v_dim // MemP)
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        indices, weight, per_sample_weights = ctx.saved_tensors
-        # Expand grad_output to match the shape of gathered embeddings
-        grad_output_expanded = grad_output.unsqueeze(1).expand(*indices.size(), weight.size(1))
-        N_CHUNKS = ctx.backward_chunks
-        assert (
-            indices.size(0) % N_CHUNKS == 0
-        ), f"batchsize x pk_heads x pk_knn x seq_len needs to be divisible by backward_chunks but got {indices.size(0)} / {N_CHUNKS}"
-        chunk_size = indices.size(0) // N_CHUNKS
-        # Apply per-sample weights during the backward pass if they were used in the forward pass
-        grad_per_sample_weights = None
-        if per_sample_weights is not None:
-            grad_per_sample_weights = []
-            for n in range(N_CHUNKS):
-                start = chunk_size * n
-                end = chunk_size * (n + 1)
-                weight_i = weight[indices[start:end, :]]
-                weight_i.mul_(grad_output_expanded[start:end, :, :])
-                grad_per_sample_weights.append(weight_i.sum(-1))
-            del weight_i
-            grad_per_sample_weights = torch.cat(grad_per_sample_weights, dim=0)
-        # Initialize gradient for the weight matrix as zeros
-        grad_weight = torch.zeros_like(weight)
-        for n in range(N_CHUNKS):
-            start = chunk_size * n
-            end = chunk_size * (n + 1)
-            partial_grad_output_expanded = grad_output_expanded[start:end, :, :]
-            partial_indices = indices[start:end, :]
-            if per_sample_weights is not None:
-                partial_per_sample_weights = per_sample_weights[start:end, :]
-                partial_grad_output_expanded = partial_grad_output_expanded * partial_per_sample_weights.unsqueeze(-1)
-            partial_grad_output_expanded = partial_grad_output_expanded.view(-1, weight.size(1))
-            grad_weight.index_add_(
-                0,
-                partial_indices.view(-1),
-                partial_grad_output_expanded,
-            )
-        return None, grad_weight, grad_per_sample_weights, None, None
-
-
-def custom_embedding_bag_function(
-    indices: torch.Tensor,
-    weight: torch.Tensor,
-    per_sample_weights: torch.Tensor,
-    mode: str = "sum",
-) -> torch.Tensor:
-    assert mode == "sum"
-    return CustomEmbeddingBagFunction.apply(indices, weight, per_sample_weights)
 
 
 @triton.jit
@@ -415,53 +351,3 @@ def embedding_bag_triton(
 ) -> torch.Tensor:
     assert mode == "sum"
     return xFormersEmbeddingBag.apply(indices, weight, per_sample_weights, bw_algo)
-
-
-if __name__ == "__main__":
-    # Correctness/speed check:
-    B = 4096
-    K = 1024**2
-    bag_size = 32
-    dim = 4096
-    print(f"{B=} {K=} {bag_size=} {dim=}")
-    torch.manual_seed(0)
-    torch.set_default_device("cuda")
-    torch.set_default_dtype(torch.bfloat16)
-    indices = torch.randint(0, K, [B, 10])
-    # indices = torch.randint(0, K, [B, bag_size])
-    weight = torch.randn([K, dim], requires_grad=True)
-    per_sample_weights = torch.randn(indices.shape, requires_grad=True)
-    gradient = torch.randn([B, dim])
-    # Torch impl
-    out_torch = F.embedding_bag(indices, weight, per_sample_weights=per_sample_weights, mode="sum")
-    out_torch.backward(gradient)
-    wg = weight.grad
-    wpsg = per_sample_weights.grad
-    weight.grad = per_sample_weights.grad = None
-    # xFormers impl
-    out_xf = xformers_embedding_bag(indices, weight, per_sample_weights)
-    out_xf.backward(gradient)
-    assert torch.allclose(out_torch, out_xf)
-    assert torch.allclose(wg, weight.grad, atol=5e-2, rtol=1e-2)
-    assert torch.allclose(wpsg, per_sample_weights.grad, atol=5e-2, rtol=1e-2)
-    print("Correctness: PASS")
-    for op, op_name in [
-        (F.embedding_bag, "F.embedding_bag"),
-        (custom_embedding_bag_function, "custom_embedding_bag_function"),
-        (
-            torch.compile(custom_embedding_bag_function),
-            "custom_embedding_bag_function + torch.compile",
-        ),
-        (xformers_embedding_bag, "xformers_embedding_bag"),
-    ]:
-        fn = lambda: op(indices, weight, per_sample_weights=per_sample_weights, mode="sum").backward(gradient)
-        fn()
-        # time
-        REPEATS = 10
-        torch.cuda.synchronize()
-        begin = time.time()
-        for _ in range(REPEATS):
-            fn()
-        torch.cuda.synchronize()
-        dt = (time.time() - begin) / REPEATS
-        print(f"{op_name}: {round(dt*1000, 2)}ms")
