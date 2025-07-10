@@ -56,16 +56,26 @@ class AmpereGemm:
         C_major = LayoutEnum.ROW_MAJOR
         D_major = LayoutEnum.ROW_MAJOR
 
+        copy_bits = 128
+
         sA_layout = self._make_shared_memory_layout_AB(
-            self.A_dtype, A_major, 128, (self.cta_tiler[0], self.cta_tiler[2], self.num_stages)
+            self.A_dtype, A_major, copy_bits, (self.cta_tiler[0], self.cta_tiler[2], self.num_stages)
         )
 
         sB_layout = self._make_shared_memory_layout_AB(
-            self.B_dtype, B_major, 128, (self.cta_tiler[1], self.cta_tiler[2], self.num_stages)
+            self.B_dtype, B_major, copy_bits, (self.cta_tiler[1], self.cta_tiler[2], self.num_stages)
         )
 
-        sC_layout = self._make_smem_layout_C(self.C_dtype, C_major, 128, (self.cta_tiler[0], self.cta_tiler[1]))
-        sD_layout = self._make_smem_layout_C(self.D_dtype, D_major, 128, (self.cta_tiler[0], self.cta_tiler[1]))
+        sC_layout = self._make_smem_layout_C(self.C_dtype, C_major, copy_bits, (self.cta_tiler[0], self.cta_tiler[1]))
+        sD_layout = self._make_smem_layout_C(self.D_dtype, D_major, copy_bits, (self.cta_tiler[0], self.cta_tiler[1]))
+
+        # Shared memory allocated for operations with A, B will be
+        # overwritten for operations on C. This is to improve performance
+        # by reducing the size of shared memory requested by each block
+        smem_size = max(
+            cute.size_in_bytes(mC.element_type, sC_layout),
+            cute.size_in_bytes(mA.element_type, sA_layout) + cute.size_in_bytes(mB.element_type, sB_layout),
+        )
 
     def _make_shared_memory_layout_AB(self, dtype, major_mode, copy_bits, smem_tiler):
         major_mode_size = smem_tiler[1] if major_mode == LayoutEnum.ROW_MAJOR else smem_tiler[0]
