@@ -4,11 +4,14 @@
 
 from __future__ import annotations
 
+import math
+
 import torch
 
 import cutlass
 import cutlass.cute as cute
 from cutlass.cute.runtime import from_dlpack
+from cutlass.utils import LayoutEnum
 
 
 _DTYPE_MAP = {torch.float32: cute.Float32, torch.float16: cute.Float16, torch.bfloat16: cute.BFloat16}
@@ -48,8 +51,40 @@ class AmpereGemm:
 
     @cute.jit
     def __call__(self, mA: cute.Tensor, mB: cute.Tensor, mC: cute.Tensor, mD: cute.Tensor) -> None:
-        return
-        # A_major = Layo
+        A_major = LayoutEnum.ROW_MAJOR
+        B_major = LayoutEnum.ROW_MAJOR
+        C_major = LayoutEnum.ROW_MAJOR
+        D_major = LayoutEnum.ROW_MAJOR
+
+        sA_layout = self._make_shared_memory_layout_AB(
+            self.A_dtype, A_major, 128, (self.cta_tiler[0], self.cta_tiler[2], self.num_stages)
+        )
+        sB_layout = self._make_shared_memory_layout_AB(
+            self.B_dtype, B_major, 128, (self.cta_tiler[1], self.cta_tiler[2], self.num_stages)
+        )
+
+    def _make_shared_memory_layout_AB(self, dtype, major_mode, copy_bits, smem_tiler):
+        major_mode_size = smem_tiler[1] if major_mode == LayoutEnum.ROW_MAJOR else smem_tiler[0]
+        major_mode_size = min(64, major_mode_size)
+
+        swizzle_bits = int(math.log2(major_mode_size * dtype.width // copy_bits))
+        swizzle_bits = min(swizzle_bits, 3)
+
+        layout_atom_outer = (
+            cute.make_layout((8, major_mode_size), stride=(major_mode_size, 1))
+            if major_mode == LayoutEnum.ROW_MAJOR
+            else cute.make_layout((major_mode_size, 8), stride=(1, major_mode_size))
+        )
+
+        layout_atom = cute.make_composed_layout(
+            cute.make_swizzle(swizzle_bits, 3, 3),
+            0,
+            layout_atom_outer,
+        )
+
+        layout = cute.tile_to_shape(layout_atom, smem_tiler, (0, 1, 2))
+
+        return layout
 
 
 def ampere_gemm(A: torch.Tensor, B: torch.Tensor, C: torch.Tensor, D: torch.Tensor) -> None:
@@ -73,4 +108,7 @@ def ampere_gemm(A: torch.Tensor, B: torch.Tensor, C: torch.Tensor, D: torch.Tens
     C = C.mark_compact_shape_dynamic(mode=2, stride_order=(0, 1, 2), divisibility=128 // C_dtype.width)
     D = D.mark_compact_shape_dynamic(mode=2, stride_order=(0, 1, 2), divisibility=128 // D_dtype.width)
 
-    print(A)
+    gemm = AmpereGemm(A_dtype=A_dtype, B_dtype=B_dtype, C_dtype=C_dtype, D_dtype=D_dtype)
+    cute.compile(gemm, A, B, C, D)
+
+    gemm(A, B, C, D)
