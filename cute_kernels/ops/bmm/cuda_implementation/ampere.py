@@ -59,9 +59,13 @@ class AmpereGemm:
         sA_layout = self._make_shared_memory_layout_AB(
             self.A_dtype, A_major, 128, (self.cta_tiler[0], self.cta_tiler[2], self.num_stages)
         )
+
         sB_layout = self._make_shared_memory_layout_AB(
             self.B_dtype, B_major, 128, (self.cta_tiler[1], self.cta_tiler[2], self.num_stages)
         )
+
+        sC_layout = self._make_smem_layout_C(self.C_dtype, C_major, 128, (self.cta_tiler[0], self.cta_tiler[1]))
+        sD_layout = self._make_smem_layout_C(self.D_dtype, D_major, 128, (self.cta_tiler[0], self.cta_tiler[1]))
 
     def _make_shared_memory_layout_AB(self, dtype, major_mode, copy_bits, smem_tiler):
         major_mode_size = smem_tiler[1] if major_mode == LayoutEnum.ROW_MAJOR else smem_tiler[0]
@@ -76,13 +80,33 @@ class AmpereGemm:
             else cute.make_layout((major_mode_size, 8), stride=(1, major_mode_size))
         )
 
-        layout_atom = cute.make_composed_layout(
-            cute.make_swizzle(swizzle_bits, 3, 3),
-            0,
-            layout_atom_outer,
-        )
+        layout_atom = cute.make_composed_layout(cute.make_swizzle(swizzle_bits, 3, 3), 0, layout_atom_outer)
 
         layout = cute.tile_to_shape(layout_atom, smem_tiler, (0, 1, 2))
+
+        return layout
+
+    def _make_smem_layout_C(self, dtype, major_mode, copy_bits, smem_tiler):
+        major_mode_size = smem_tiler[1] if major_mode == LayoutEnum.ROW_MAJOR else smem_tiler[0]
+
+        swizzle_bits = int(math.log2(major_mode_size * dtype.width // copy_bits))
+        swizzle_bits = min(swizzle_bits, 3)
+
+        layout_atom_outer = (
+            cute.make_layout((8, major_mode_size), stride=(major_mode_size, 1))
+            if major_mode == LayoutEnum.ROW_MAJOR
+            else cute.make_layout((major_mode_size, 8), stride=(1, major_mode_size))
+        )
+
+        if major_mode == LayoutEnum.ROW_MAJOR:
+            layout_atom = cute.make_composed_layout(cute.make_swizzle(swizzle_bits, 3, 4), 0, layout_atom_outer)
+        else:
+            # Due to the thread layout of the mma, remove swizzle in C to
+            # prevent shared memory fragments owned by an single thread from
+            # holding swizzles
+            layout_atom = cute.make_composed_layout(cute.make_swizzle(0, 3, 4), 0, layout_atom_outer)
+
+        layout = cute.tile_to_shape(layout_atom, smem_tiler, (0, 1))
 
         return layout
 
