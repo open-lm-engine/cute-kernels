@@ -7,6 +7,7 @@ import torch
 from ...cutotune import CutoTuneParameter
 from ...kernel_backend import KernelBackend
 from ...utils import ensure_contiguous
+from .cuda_implementation import ampere_gemm
 from .triton_implementation import bmm_triton
 
 
@@ -58,19 +59,9 @@ def bmm_cute(
         assert C is not None
         assert C.size() == (L, M, N)
 
-    if kernel_backend == KernelBackend.torch:
-        if is_A_transposed:
-            A = A.transpose(1, 2)
-
-        if is_B_transposed:
-            B = B.transpose(1, 2)
-
-        if beta == 0:
-            output = torch.bmm(A, B)
-            if alpha != 1:
-                output = alpha * output
-        else:
-            output = torch.baddbmm(C, A, B, alpha=alpha, beta=beta)
+    if kernel_backend == KernelBackend.cuda:
+        output = torch.empty(L, M, N, dtype=A.dtype, device=A.device)
+        ampere_gemm(A=A, B=B, C=C, D=output)
     elif kernel_backend == KernelBackend.triton:
         output = torch.empty(L, M, N, dtype=A.dtype, device=A.device)
 
@@ -84,6 +75,19 @@ def bmm_cute(
             alpha=alpha,
             beta=beta,
         )
+    elif kernel_backend == KernelBackend.torch:
+        if is_A_transposed:
+            A = A.transpose(1, 2)
+
+        if is_B_transposed:
+            B = B.transpose(1, 2)
+
+        if beta == 0:
+            output = torch.bmm(A, B)
+            if alpha != 1:
+                output = alpha * output
+        else:
+            output = torch.baddbmm(C, A, B, alpha=alpha, beta=beta)
     else:
         raise ValueError(f"unexpected kernel_backend ({kernel_backend})")
 
