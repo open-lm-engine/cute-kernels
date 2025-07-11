@@ -2,6 +2,8 @@
 # Copyright (c) 2025, Mayank Mishra
 # **************************************************
 
+import torch
+
 import cutlass.cute as cute
 
 
@@ -38,3 +40,8 @@ def _add_scalar_cuda_jit(mx: cute.Tensor, y: cute.Float32, mz: cute.Tensor) -> N
     _add_scalar_cuda_kernel(gx=gx, y=y, gz=gz, tv_layout=tv_layout).launch(
         grid=(cute.size(gx, mode=[1]), 1, 1), block=(BLOCK_SIZE, 1, 1)
     )
+
+
+def add_scalar_cute_dsl(x: torch.Tensor, y: float, output: torch.Tensor) -> None:
+    add_scalar_cuda_kernel = cute.compile(_add_scalar_cuda_kernel, x, y, output)
+    add_scalar_cuda_kernel(x, y, output)

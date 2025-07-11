@@ -6,6 +6,7 @@ import torch
 
 from ...kernel_backend import KernelBackend
 from .cuda_implementation import add_scalar_cuda
+from .cute_dsl_implementation import add_scalar_cute_dsl
 from .triton_implementation import add_scalar_triton
 
 
@@ -15,6 +16,8 @@ class _AddScalar_Cute(torch.autograd.Function):
         output = torch.empty_like(x)
 
         if kernel_backend == KernelBackend.cuda:
+            add_scalar_cute_dsl(x=x, y=y, output=output, BLOCK_SIZE=1024)
+        elif kernel_backend == KernelBackend.cute_dsl:
             add_scalar_cuda(x=x, y=y, output=output, BLOCK_SIZE=1024)
         elif kernel_backend == KernelBackend.triton:
             add_scalar_triton(x=x, y=y, output=output)
