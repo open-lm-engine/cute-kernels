@@ -53,6 +53,9 @@ def add_scalar_cute_dsl(x: torch.Tensor, y: float, output: torch.Tensor) -> None
 
     key = x.dtype
 
+    x = x.detach()
+    output = output.detach()
+
     x = from_dlpack(x, assumed_align=16)
     output = from_dlpack(output, assumed_align=16)
 
