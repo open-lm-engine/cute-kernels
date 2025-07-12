@@ -10,6 +10,7 @@ from .cutotune import CutoTuneParameter
 
 class KernelBackend(Enum):
     cuda = "cuda"
+    cute_dsl = "cute_dsl"
     torch = "torch"
     triton = "triton"
 
