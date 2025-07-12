@@ -57,7 +57,6 @@ def add_scalar_cute_dsl(x: torch.Tensor, y: float, output: torch.Tensor) -> None
     output = from_dlpack(output, assumed_align=16)
 
     kernel = add_scalar_cute_dsl._kernels.get(key, None)
-
     if kernel is None:
         kernel = cute.compile(_add_scalar_cuda_jit, x, y, output)
         add_scalar_cute_dsl._kernels[key] = kernel
