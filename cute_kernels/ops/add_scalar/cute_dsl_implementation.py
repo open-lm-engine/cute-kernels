@@ -5,6 +5,7 @@
 import torch
 
 import cutlass.cute as cute
+from cutlass.cute.runtime import from_dlpack
 
 
 @cute.kernel
@@ -18,11 +19,14 @@ def _add_scalar_cuda_kernel(gx: cute.Tensor, y: cute.Float32, gz: cute.Tensor, t
     thread_fragment_x = cute.composition(block_x, tv_layout)
     thread_fragment_z = cute.composition(block_z, tv_layout)
 
-    thread_x = block_x.load()
-    thread_y = cute.fragment_like(thread_x)
-    thread_y.fill(y)
+    thread_x = thread_fragment_x[THREAD_ID, None]
+    thread_z = thread_fragment_z[THREAD_ID, None]
 
-    thread_z = thread_x + thread_y
+    thread_x = thread_x.load().to(cute.Float32)
+    thread_x = thread_x + y
+    thread_x = thread_x.to(gx.element_type)
+
+    thread_z.store(thread_x)
 
 
 @cute.jit
@@ -43,5 +47,21 @@ def _add_scalar_cuda_jit(mx: cute.Tensor, y: cute.Float32, mz: cute.Tensor) -> N
 
 
 def add_scalar_cute_dsl(x: torch.Tensor, y: float, output: torch.Tensor) -> None:
-    add_scalar_cuda_kernel = cute.compile(_add_scalar_cuda_kernel, x, y, output)
-    add_scalar_cuda_kernel(x, y, output)
+    if x.dim() == 1:
+        x = x.unsqueeze(0)
+        output = output.unsqueeze(0)
+
+    x = from_dlpack(x, assumed_align=16)
+    output = from_dlpack(output, assumed_align=16)
+
+    key = x.dtype
+    kernel = add_scalar_cute_dsl._kernels.get(key, None)
+
+    if kernel is None:
+        kernel = cute.compile(_add_scalar_cuda_jit, x, y, output)
+        add_scalar_cute_dsl._kernels[key] = kernel
+
+    kernel(x, y, output)
+
+
+add_scalar_cute_dsl._kernels = {}
