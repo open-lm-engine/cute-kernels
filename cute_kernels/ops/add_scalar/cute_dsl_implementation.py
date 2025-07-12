@@ -22,13 +22,11 @@ def _add_scalar_cuda_kernel(gx: cute.Tensor, y: cute.Float32, gz: cute.Tensor, t
     thread_fragment_z = cute.composition(block_z, tv_layout)
 
     thread_x = thread_fragment_x[THREAD_ID, None]
-    thread_z = thread_fragment_z[THREAD_ID, None]
-
     thread_x = thread_x.load().to(cute.Float32)
     thread_x = thread_x + y
-    thread_x = thread_x.to(gx.element_type)
+    thread_x = thread_x.to(gz.element_type)
 
-    thread_z.store(thread_x)
+    thread_fragment_z[THREAD_ID, None].store(thread_x)
 
 
 @cute.jit
