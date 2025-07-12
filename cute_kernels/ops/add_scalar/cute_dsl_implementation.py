@@ -3,9 +3,12 @@
 # **************************************************
 
 import torch
+from torch.library import custom_op
 
 import cutlass.cute as cute
 from cutlass.cute.runtime import from_dlpack
+
+from ...constants import LIBRARY_NAME
 
 
 @cute.kernel
@@ -46,6 +49,7 @@ def _add_scalar_cuda_jit(mx: cute.Tensor, y: cute.Float32, mz: cute.Tensor) -> N
     )
 
 
+@custom_op(f"{LIBRARY_NAME}::add_scalar_cute_dsl", mutates_args={"output"})
 def add_scalar_cute_dsl(x: torch.Tensor, y: float, output: torch.Tensor) -> None:
     if x.dim() == 1:
         x = x.unsqueeze(0)
