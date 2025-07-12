@@ -51,10 +51,11 @@ def add_scalar_cute_dsl(x: torch.Tensor, y: float, output: torch.Tensor) -> None
         x = x.unsqueeze(0)
         output = output.unsqueeze(0)
 
+    key = x.dtype
+
     x = from_dlpack(x, assumed_align=16)
     output = from_dlpack(output, assumed_align=16)
 
-    key = x.dtype
     kernel = add_scalar_cute_dsl._kernels.get(key, None)
 
     if kernel is None:
