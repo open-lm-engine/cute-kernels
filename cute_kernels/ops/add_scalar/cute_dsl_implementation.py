@@ -6,9 +6,8 @@ import torch
 from torch.library import custom_op
 
 import cutlass.cute as cute
+from cute_kernels.constants import LIBRARY_NAME
 from cutlass.cute.runtime import from_dlpack
-
-from ...constants import LIBRARY_NAME
 
 
 @cute.kernel
