@@ -30,6 +30,7 @@ table = []
 T = 4096
 H = 4096
 I = 256
+flops = 6 * T * H * I
 
 _x = torch.randn(T, H, device=torch.cuda.current_device(), dtype=torch.float32)
 _Wu = torch.randn(I, H, device=torch.cuda.current_device(), dtype=torch.float32)
@@ -59,8 +60,6 @@ with torch.no_grad():
             device_synchronize()
 
             t = s.elapsed_time(e) / n / 1e3
-            flops = 2 * x.size(0) * x.size(1) * (Wu.size(0) + Wg.size(0))
-            flops += 2 * x.size(0) * Wd.size(0) * Wd.size(1)
             row.append(flops / t / 1e12)
 
         table.append(row)
