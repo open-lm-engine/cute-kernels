@@ -3,9 +3,11 @@
 # **************************************************
 
 import torch
+import torch.nn.functional as F
 
+from ...kernel_backend import KernelBackend
 from ...utils import ensure_contiguous
-from .torch_implementation import fused_swiglu_torch
+from ..swiglu import swiglu_cute
 from .triton_implementation import fused_swiglu_forward_triton
 
 
@@ -51,5 +53,26 @@ def fused_swiglu_cute(
     up_weight: torch.Tensor,
     down_weight: torch.Tensor,
     memory_efficient: bool = False,
+    *,
+    kernel_backend_forward: KernelBackend = KernelBackend.triton,
+    kernel_backend_backward: KernelBackend = KernelBackend.triton,
 ) -> torch.Tensor:
-    return _FusedSwiglu_Cute.apply(x, gate_weight, up_weight, down_weight, memory_efficient)
+    if kernel_backend_forward == KernelBackend.triton:
+        assert kernel_backend_backward == KernelBackend.triton
+        x = _FusedSwiglu_Cute.apply(x, gate_weight, up_weight, down_weight, memory_efficient)
+    elif kernel_backend_forward == KernelBackend.torch:
+        assert kernel_backend_backward == KernelBackend.torch
+
+        up = F.linear(x, up_weight)
+        gate = F.linear(x, gate_weight)
+
+        x = swiglu_cute(
+            gate=gate,
+            up=up,
+            kernel_backend_forward=kernel_backend_forward,
+            kernel_backend_backward=kernel_backend_backward,
+        )
+
+        x = F.linear(x, down_weight)
+
+    return x

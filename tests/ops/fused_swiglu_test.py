@@ -7,7 +7,7 @@ from typing import Callable
 import torch
 from parameterized import parameterized
 
-from cute_kernels import fused_swiglu_cute, fused_swiglu_torch, set_seed
+from cute_kernels import KernelBackend, fused_swiglu_cute, set_seed
 
 from ..test_commons import TestCommons
 
@@ -53,11 +53,13 @@ class FusedSwiGLUTest(TestCommons):
             memory_efficient=memory_efficient,
         )
 
-        z_expected = fused_swiglu_torch(
+        z_expected = fused_swiglu_cute(
             x=x_expected,
             gate_weight=gate_weight_expected,
             up_weight=up_weight_expected,
             down_weight=down_weight_expected,
+            kernel_backend_forward=KernelBackend.torch,
+            kernel_backend_backward=KernelBackend.torch,
         )
 
         # z_kernel.mean().backward()
