@@ -31,16 +31,16 @@ T = 4096
 H = 4096
 I = 256
 
-x = torch.randn(T, H, device=torch.cuda.current_device(), dtype=torch.float32)
-Wu = torch.randn(I, H, device=torch.cuda.current_device(), dtype=torch.float32)
-Wg = torch.randn(I, H, device=torch.cuda.current_device(), dtype=torch.float32)
-Wd = torch.randn(H, I, device=torch.cuda.current_device(), dtype=torch.float32)
+_x = torch.randn(T, H, device=torch.cuda.current_device(), dtype=torch.float32)
+_Wu = torch.randn(I, H, device=torch.cuda.current_device(), dtype=torch.float32)
+_Wg = torch.randn(I, H, device=torch.cuda.current_device(), dtype=torch.float32)
+_Wd = torch.randn(H, I, device=torch.cuda.current_device(), dtype=torch.float32)
 
 for dtype in [torch.float16, torch.bfloat16, torch.float32]:
-    x = x.to(dtype)
-    Wu = Wu.to(dtype)
-    Wg = Wg.to(dtype)
-    Wd = Wd.to(dtype)
+    x = _x.to(dtype)
+    Wu = _Wu.to(dtype)
+    Wg = _Wg.to(dtype)
+    Wd = _Wd.to(dtype)
 
     row = [str(dtype)]
     for kernel in kernels:
