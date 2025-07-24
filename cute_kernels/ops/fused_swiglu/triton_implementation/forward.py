@@ -117,7 +117,7 @@ def fused_swiglu_forward_triton_kernel(
         mask = mask_b[:, None] & mask_h[None, :]
         indices = indices_b[:, None] * H + indices_h[None, :]
 
-        tl.atomic_add(y_ptr + indices, y, mask=mask)
+        tl.atomic_add(y_ptr + indices, y, mask=mask, sem="relaxed")
 
 
 @custom_op(f"{LIBRARY_NAME}::fused_swiglu_forward_triton", mutates_args={"gate", "up", "output"})
