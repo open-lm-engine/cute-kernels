@@ -87,7 +87,7 @@ def fused_swiglu_forward_triton_kernel(
         Wg = tl.load(Wg_ptr + indices, mask=mask)
         g = matmul(x, Wg.T, g, output_dtype=g.dtype)
 
-    z = u * g * sigmoid(g)
+    z = u * g * sigmoid(g, output_dtype=x_ptr.dtype.element_ty)
 
     if not MEMORY_EFFICIENT:
         indices_bi = indices_b[:, None] * I + indices_i[None, :]
