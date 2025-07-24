@@ -31,19 +31,19 @@ T = 4096
 H = 4096
 I = 256
 
-x = torch.randn(T, H, device=torch.cuda.current_device(), dtype=dtype)
-Wu = torch.randn(I, H, device=torch.cuda.current_device(), dtype=dtype)
-Wg = torch.randn(I, H, device=torch.cuda.current_device(), dtype=dtype)
-Wd = torch.randn(H, I, device=torch.cuda.current_device(), dtype=dtype)
+x = torch.randn(T, H, device=torch.cuda.current_device(), dtype=torch.float32)
+Wu = torch.randn(I, H, device=torch.cuda.current_device(), dtype=torch.float32)
+Wg = torch.randn(I, H, device=torch.cuda.current_device(), dtype=torch.float32)
+Wd = torch.randn(H, I, device=torch.cuda.current_device(), dtype=torch.float32)
 
 for dtype in [torch.float16, torch.bfloat16, torch.float32]:
+    x = x.to(dtype)
+    Wu = Wu.to(dtype)
+    Wg = Wg.to(dtype)
+    Wd = Wd.to(dtype)
+
     row = [str(dtype)]
     for kernel in kernels:
-        x = torch.randn(4096, 4096, device=torch.cuda.current_device(), dtype=dtype)
-        Wu = torch.randn(4096, 4096, device=torch.cuda.current_device(), dtype=dtype)
-        Wg = torch.randn(4096, 4096, device=torch.cuda.current_device(), dtype=dtype)
-        Wd = torch.randn(4096, 4096, device=torch.cuda.current_device(), dtype=dtype)
-
         for i in range(n):
             z = kernel(x=x, gate_weight=Wg, up_weight=Wu, down_weight=Wd)
 
