@@ -10,7 +10,6 @@ from tabulate import tabulate
 from cute_kernels import KernelBackend, device_synchronize, fused_swiglu_cute
 
 
-torch._inductor.config.max_autotune_gemm_backends = "TRITON"
 torch.backends.cuda.matmul.allow_tf32 = True
 
 n = 100
