@@ -62,6 +62,7 @@ def fused_swiglu_cute(
         x = _FusedSwiglu_Cute.apply(x, gate_weight, up_weight, down_weight, memory_efficient)
     elif kernel_backend_forward == KernelBackend.torch:
         assert kernel_backend_backward == KernelBackend.torch
+        assert not memory_efficient
 
         up = F.linear(x, up_weight)
         gate = F.linear(x, gate_weight)

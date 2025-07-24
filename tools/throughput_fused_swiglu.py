@@ -7,7 +7,7 @@ from functools import partial
 import torch
 from tabulate import tabulate
 
-from cute_kernels import device_synchronize, fused_swiglu_cute, fused_swiglu_torch
+from cute_kernels import KernelBackend, device_synchronize, fused_swiglu_cute
 
 
 torch._inductor.config.max_autotune_gemm_backends = "TRITON"
@@ -17,13 +17,24 @@ n = 100
 
 headers = ["dtype", "torch TFLOPs", "torch compile TFLOPs", "triton memory efficient TFLOPs", "triton FLOPs"]
 kernels = [
-    fused_swiglu_torch,
-    torch.compile(fused_swiglu_torch, mode="max-autotune"),
+    partial(
+        fused_swiglu_cute, kernel_backend_forward=KernelBackend.torch, kernel_backend_backward=KernelBackend.torch
+    ),
+    torch.compile(fused_swiglu_cute, mode="max-autotune"),
     partial(fused_swiglu_cute, memory_efficient=True),
     partial(fused_swiglu_cute, memory_efficient=False),
 ]
 
 table = []
+
+T = 4096
+H = 4096
+I = 256
+
+x = torch.randn(T, H, device=torch.cuda.current_device(), dtype=dtype)
+Wu = torch.randn(I, H, device=torch.cuda.current_device(), dtype=dtype)
+Wg = torch.randn(I, H, device=torch.cuda.current_device(), dtype=dtype)
+Wd = torch.randn(H, I, device=torch.cuda.current_device(), dtype=dtype)
 
 for dtype in [torch.float16, torch.bfloat16, torch.float32]:
     row = [str(dtype)]
