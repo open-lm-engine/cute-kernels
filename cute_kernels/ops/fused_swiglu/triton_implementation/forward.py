@@ -19,7 +19,7 @@ def _get_autotune_configs() -> list[triton.Config]:
     for BLOCK_SIZE_B in get_powers_of_2(16, 256):
         for BLOCK_SIZE_I in get_powers_of_2(16, 256):
             for BLOCK_SIZE_H in get_powers_of_2(16, 256):
-                if BLOCK_SIZE_B * BLOCK_SIZE_H * BLOCK_SIZE_I:
+                if BLOCK_SIZE_B * BLOCK_SIZE_H * BLOCK_SIZE_I <= 16384:
                     for num_warps in get_powers_of_2(2, 8):
                         for num_stages in range(6):
                             configs.append(
