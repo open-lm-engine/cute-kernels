@@ -9,6 +9,7 @@ from .continuous_count import continuous_count_cute
 from .cross_entropy import cross_entropy_cute
 from .fused_linear_cross_entropy import fused_linear_cross_entropy_cute
 from .fused_residual_add_rmsnorm import fused_residual_add_rmsnorm_cute
+from .fused_swiglu import fused_swiglu_cute
 from .gemm import gemm_cute
 from .grouped_gemm import grouped_gemm_cute
 from .matrix_transpose import matrix_transpose_cute
