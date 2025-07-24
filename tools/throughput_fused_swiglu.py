@@ -36,33 +36,34 @@ _Wu = torch.randn(I, H, device=torch.cuda.current_device(), dtype=torch.float32)
 _Wg = torch.randn(I, H, device=torch.cuda.current_device(), dtype=torch.float32)
 _Wd = torch.randn(H, I, device=torch.cuda.current_device(), dtype=torch.float32)
 
-for dtype in [torch.float16, torch.bfloat16, torch.float32]:
-    x = _x.to(dtype)
-    Wu = _Wu.to(dtype)
-    Wg = _Wg.to(dtype)
-    Wd = _Wd.to(dtype)
+with torch.no_grad():
+    for dtype in [torch.float16, torch.bfloat16, torch.float32]:
+        x = _x.to(dtype)
+        Wu = _Wu.to(dtype)
+        Wg = _Wg.to(dtype)
+        Wd = _Wd.to(dtype)
 
-    row = [str(dtype)]
-    for kernel in kernels:
-        for i in range(n):
-            z = kernel(x=x, gate_weight=Wg, up_weight=Wu, down_weight=Wd)
+        row = [str(dtype)]
+        for kernel in kernels:
+            for i in range(n):
+                z = kernel(x=x, gate_weight=Wg, up_weight=Wu, down_weight=Wd)
 
-        s = torch.cuda.Event(enable_timing=True)
-        e = torch.cuda.Event(enable_timing=True)
+            s = torch.cuda.Event(enable_timing=True)
+            e = torch.cuda.Event(enable_timing=True)
 
-        s.record()
-        for i in range(n):
-            z = kernel(x=x, gate_weight=Wg, up_weight=Wu, down_weight=Wd)
-        e.record()
+            s.record()
+            for i in range(n):
+                z = kernel(x=x, gate_weight=Wg, up_weight=Wu, down_weight=Wd)
+            e.record()
 
-        device_synchronize()
+            device_synchronize()
 
-        t = s.elapsed_time(e) / n / 1e3
-        flops = 2 * x.size(0) * x.size(1) * (Wu.size(0) + Wg.size(0))
-        flops += 2 * x.size(0) * Wd.size(0) * Wd.size(1)
-        row.append(flops / t / 1e12)
+            t = s.elapsed_time(e) / n / 1e3
+            flops = 2 * x.size(0) * x.size(1) * (Wu.size(0) + Wg.size(0))
+            flops += 2 * x.size(0) * Wd.size(0) * Wd.size(1)
+            row.append(flops / t / 1e12)
 
-    table.append(row)
+        table.append(row)
 
 
 print(tabulate(table, headers=headers))
