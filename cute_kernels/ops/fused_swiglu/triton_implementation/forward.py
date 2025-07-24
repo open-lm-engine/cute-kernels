@@ -37,7 +37,14 @@ def _get_autotune_configs() -> list[triton.Config]:
     return configs
 
 
-@triton.autotune(configs=_get_autotune_configs(), key=["MEMORY_EFFICIENT"], reset_to_zero=["y_ptr"])
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_I": 256, "BLOCK_SIZE_H": 128}, num_warps=4, num_stages=4),
+        triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_I": 128, "BLOCK_SIZE_H": 256}, num_warps=4, num_stages=4),
+    ],
+    key=["MEMORY_EFFICIENT"],
+    reset_to_zero=["y_ptr"],
+)
 @triton.jit
 def fused_swiglu_forward_triton_kernel(
     x_ptr,
