@@ -6,11 +6,12 @@
 import torch
 import triton
 import triton.language as tl
+from torch.library import custom_op
 
 from ....constants import LIBRARY_NAME
 from ....math import ceil_divide, get_powers_of_2
 from ....triton_math import matmul, sigmoid
-from ....utils import cute_op, get_num_elements_and_hidden_size
+from ....utils import get_num_elements_and_hidden_size
 
 
 def _get_autotune_configs() -> list[triton.Config]:
@@ -112,7 +113,7 @@ def fused_swiglu_forward_triton_kernel(
         tl.atomic_add(y_ptr + indices, y, mask=mask)
 
 
-@cute_op(f"{LIBRARY_NAME}::fused_swiglu_forward_triton", mutates_args={"gate", "up", "output"})
+@custom_op(f"{LIBRARY_NAME}::fused_swiglu_forward_triton", mutates_args={"gate", "up", "output"})
 def fused_swiglu_forward_triton(
     x: torch.Tensor,
     gate_weight: torch.Tensor,
