@@ -15,14 +15,12 @@ torch.backends.cuda.matmul.allow_tf32 = True
 
 n = 100
 
-headers = ["dtype", "torch TFLOPs", "torch compile TFLOPs", "triton memory efficient TFLOPs", "triton FLOPs"]
+headers = ["dtype", "torch TFLOPs", "triton FLOPs"]
 kernels = [
     partial(
         fused_swiglu_cute, kernel_backend_forward=KernelBackend.torch, kernel_backend_backward=KernelBackend.torch
     ),
-    torch.compile(fused_swiglu_cute, mode="max-autotune"),
-    partial(fused_swiglu_cute, memory_efficient=True),
-    partial(fused_swiglu_cute, memory_efficient=False),
+    fused_swiglu_cute,
 ]
 
 table = []
