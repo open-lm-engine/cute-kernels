@@ -6,7 +6,7 @@ import torch
 
 from ...utils import ensure_contiguous
 from .torch_implementation import fused_swiglu_torch
-from .triton_implementation import fused_swiglu_backward_triton, fused_swiglu_forward_triton
+from .triton_implementation import fused_swiglu_forward_triton
 
 
 class _FusedSwiglu_Cute(torch.autograd.Function):
