@@ -37,14 +37,14 @@ def _get_autotune_configs() -> list[triton.Config]:
     return configs
 
 
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_I": 256, "BLOCK_SIZE_H": 128}, num_warps=4, num_stages=1),
-        triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_I": 128, "BLOCK_SIZE_H": 256}, num_warps=4, num_stages=1),
-    ],
-    key=["MEMORY_EFFICIENT"],
-    reset_to_zero=["y_ptr"],
-)
+# @triton.autotune(
+#     configs=[
+#         triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_I": 256, "BLOCK_SIZE_H": 128}, num_warps=4, num_stages=1),
+#         triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_I": 128, "BLOCK_SIZE_H": 256}, num_warps=4, num_stages=1),
+#     ],
+#     key=["MEMORY_EFFICIENT"],
+#     reset_to_zero=["y_ptr"],
+# )
 @triton.jit
 def fused_swiglu_forward_triton_kernel(
     x_ptr,
@@ -61,15 +61,21 @@ def fused_swiglu_forward_triton_kernel(
     BLOCK_SIZE_H: tl.constexpr,
     BLOCK_SIZE_I: tl.constexpr,
     MEMORY_EFFICIENT: tl.constexpr,
+    ATOMIC_ADD: tl.constexpr,
 ):
     BLOCK_ID = tl.program_id(axis=0)
-    NUM_BLOCKS_I = tl.cdiv(I, BLOCK_SIZE_I)
 
-    BLOCK_ID_B = BLOCK_ID // NUM_BLOCKS_I
-    BLOCK_ID_I = BLOCK_ID % NUM_BLOCKS_I
+    if ATOMIC_ADD:
+        NUM_BLOCKS_I = tl.cdiv(I, BLOCK_SIZE_I)
 
-    indices_b = BLOCK_ID_B * BLOCK_SIZE_B + tl.arange(0, BLOCK_SIZE_B)
-    indices_i = BLOCK_ID_I * BLOCK_SIZE_I + tl.arange(0, BLOCK_SIZE_I)
+        BLOCK_ID_B = BLOCK_ID // NUM_BLOCKS_I
+        BLOCK_ID_I = BLOCK_ID % NUM_BLOCKS_I
+
+        indices_b = BLOCK_ID_B * BLOCK_SIZE_B + tl.arange(0, BLOCK_SIZE_B)
+        indices_i = BLOCK_ID_I * BLOCK_SIZE_I + tl.arange(0, BLOCK_SIZE_I)
+    else:
+        indices_b = BLOCK_ID * BLOCK_SIZE_B + tl.arange(0, BLOCK_SIZE_B)
+        indices_i = tl.arange(0, BLOCK_SIZE_I)
 
     mask_b = indices_b < B
     mask_i = indices_i < I
@@ -148,5 +154,8 @@ def fused_swiglu_forward_triton(
             B=B,
             H=H,
             I=I,
+            BLOCK_SIZE_B=64,
+            BLOCK_SIZE_H=128,
+            BLOCK_SIZE_I=256,
             MEMORY_EFFICIENT=memory_efficient,
         )
