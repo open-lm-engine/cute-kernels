@@ -19,12 +19,12 @@ kernels = [
     partial(
         fused_swiglu_cute, kernel_backend_forward=KernelBackend.torch, kernel_backend_backward=KernelBackend.torch
     ),
-    fused_swiglu_cute,
+    partial(fused_swiglu_cute, atomic_add=False),
 ]
 
 table = []
 
-T = 4096
+T = 16384
 H = 4096
 I = 256
 flops = 6 * T * H * I

@@ -14,37 +14,14 @@ from ....triton_math import matmul, sigmoid
 from ....utils import get_num_elements_and_hidden_size
 
 
-def _get_autotune_configs() -> list[triton.Config]:
-    configs = []
-    for BLOCK_SIZE_B in get_powers_of_2(16, 256):
-        for BLOCK_SIZE_I in get_powers_of_2(16, 256):
-            for BLOCK_SIZE_H in get_powers_of_2(16, 256):
-                if BLOCK_SIZE_B * BLOCK_SIZE_H * BLOCK_SIZE_I <= 16384:
-                    for num_warps in get_powers_of_2(2, 8):
-                        for num_stages in range(6):
-                            configs.append(
-                                triton.Config(
-                                    {
-                                        "BLOCK_SIZE_B": BLOCK_SIZE_B,
-                                        "BLOCK_SIZE_I": BLOCK_SIZE_I,
-                                        "BLOCK_SIZE_H": BLOCK_SIZE_H,
-                                    },
-                                    num_warps=num_warps,
-                                    num_stages=num_stages,
-                                )
-                            )
-
-    return configs
-
-
-# @triton.autotune(
-#     configs=[
-#         triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_I": 256, "BLOCK_SIZE_H": 128}, num_warps=4, num_stages=1),
-#         triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_I": 128, "BLOCK_SIZE_H": 256}, num_warps=4, num_stages=1),
-#     ],
-#     key=["MEMORY_EFFICIENT"],
-#     reset_to_zero=["y_ptr"],
-# )
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_I": 256, "BLOCK_SIZE_H": 128}, num_warps=8, num_stages=1),
+        triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_I": 128, "BLOCK_SIZE_H": 256}, num_warps=8, num_stages=1),
+    ],
+    key=["MEMORY_EFFICIENT"],
+    reset_to_zero=["y_ptr"],
+)
 @triton.jit
 def fused_swiglu_forward_triton_kernel(
     x_ptr,
@@ -123,7 +100,10 @@ def fused_swiglu_forward_triton_kernel(
         mask = mask_b[:, None] & mask_h[None, :]
         indices = indices_b[:, None] * H + indices_h[None, :]
 
-        tl.atomic_add(y_ptr + indices, y, mask=mask, sem="relaxed")
+        if ATOMIC_ADD:
+            tl.atomic_add(y_ptr + indices, y, mask=mask, sem="relaxed")
+        else:
+            tl.store(y_ptr + indices, y, mask=mask)
 
 
 @custom_op(f"{LIBRARY_NAME}::fused_swiglu_forward_triton", mutates_args={"gate", "up", "output"})
@@ -136,11 +116,15 @@ def fused_swiglu_forward_triton(
     up: torch.Tensor | None,
     output: torch.Tensor,
     memory_efficient: bool,
+    atomic_add: bool,
 ) -> None:
     B, H = get_num_elements_and_hidden_size(x)
     I = down_weight.size(1)
 
-    GRID = lambda meta: (ceil_divide(B, meta["BLOCK_SIZE_B"]) * ceil_divide(I, meta["BLOCK_SIZE_I"]),)
+    if atomic_add:
+        GRID = lambda meta: (ceil_divide(B, meta["BLOCK_SIZE_B"]) * ceil_divide(I, meta["BLOCK_SIZE_I"]),)
+    else:
+        GRID = lambda meta: (ceil_divide(B, meta["BLOCK_SIZE_B"]),)
 
     with torch.device(x.device):
         fused_swiglu_forward_triton_kernel[GRID](
@@ -154,8 +138,6 @@ def fused_swiglu_forward_triton(
             B=B,
             H=H,
             I=I,
-            BLOCK_SIZE_B=64,
-            BLOCK_SIZE_H=128,
-            BLOCK_SIZE_I=256,
+            ATOMIC_ADD=atomic_add,
             MEMORY_EFFICIENT=memory_efficient,
         )
