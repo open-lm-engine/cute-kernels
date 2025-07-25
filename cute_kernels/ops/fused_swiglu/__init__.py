@@ -23,9 +23,12 @@ class _FusedSwiglu_Cute(torch.autograd.Function):
         memory_efficient: bool,
         atomic_add: bool,
     ) -> torch.Tensor:
-        dtype = torch.float32 if x.dtype == torch.bfloat16 else x.dtype
 
-        output = (torch.zeros_like if atomic_add else torch.empty_like)(x, dtype=dtype)
+        if atomic_add:
+            output = torch.zeros_like(x, dtype=torch.float32 if x.dtype == torch.bfloat16 else x.dtype)
+        else:
+            output = torch.empty_like(x, dtype=x.dtype)
+
         gate = None if memory_efficient else torch.empty(x.size(0), up_weight.size(0), device=x.device, dtype=x.dtype)
         up = None if memory_efficient else torch.empty(x.size(0), up_weight.size(0), device=x.device, dtype=x.dtype)
 
