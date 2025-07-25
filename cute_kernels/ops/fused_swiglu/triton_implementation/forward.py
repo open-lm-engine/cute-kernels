@@ -16,8 +16,8 @@ from ....utils import get_num_elements_and_hidden_size
 
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_I": 256, "BLOCK_SIZE_H": 128}, num_warps=8, num_stages=1),
-        triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_I": 128, "BLOCK_SIZE_H": 256}, num_warps=8, num_stages=1),
+        triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_H": 128}, num_warps=8, num_stages=1),
+        triton.Config({"BLOCK_SIZE_B": 64, "BLOCK_SIZE_H": 256}, num_warps=8, num_stages=1),
     ],
     key=["MEMORY_EFFICIENT"],
     reset_to_zero=["y_ptr"],
@@ -38,21 +38,11 @@ def fused_swiglu_forward_triton_kernel(
     BLOCK_SIZE_H: tl.constexpr,
     BLOCK_SIZE_I: tl.constexpr,
     MEMORY_EFFICIENT: tl.constexpr,
-    ATOMIC_ADD: tl.constexpr,
 ):
     BLOCK_ID = tl.program_id(axis=0)
 
-    if ATOMIC_ADD:
-        NUM_BLOCKS_I = tl.cdiv(I, BLOCK_SIZE_I)
-
-        BLOCK_ID_B = BLOCK_ID // NUM_BLOCKS_I
-        BLOCK_ID_I = BLOCK_ID % NUM_BLOCKS_I
-
-        indices_b = BLOCK_ID_B * BLOCK_SIZE_B + tl.arange(0, BLOCK_SIZE_B)
-        indices_i = BLOCK_ID_I * BLOCK_SIZE_I + tl.arange(0, BLOCK_SIZE_I)
-    else:
-        indices_b = BLOCK_ID * BLOCK_SIZE_B + tl.arange(0, BLOCK_SIZE_B)
-        indices_i = tl.arange(0, BLOCK_SIZE_I)
+    indices_b = BLOCK_ID * BLOCK_SIZE_B + tl.arange(0, BLOCK_SIZE_B)
+    indices_i = tl.arange(0, BLOCK_SIZE_I)
 
     mask_b = indices_b < B
     mask_i = indices_i < I
@@ -100,10 +90,7 @@ def fused_swiglu_forward_triton_kernel(
         mask = mask_b[:, None] & mask_h[None, :]
         indices = indices_b[:, None] * H + indices_h[None, :]
 
-        if ATOMIC_ADD:
-            tl.atomic_add(y_ptr + indices, y, mask=mask, sem="relaxed")
-        else:
-            tl.store(y_ptr + indices, y, mask=mask)
+        tl.store(y_ptr + indices, y, mask=mask)
 
 
 @custom_op(f"{LIBRARY_NAME}::fused_swiglu_forward_triton", mutates_args={"gate", "up", "output"})
@@ -116,15 +103,11 @@ def fused_swiglu_forward_triton(
     up: torch.Tensor | None,
     output: torch.Tensor,
     memory_efficient: bool,
-    atomic_add: bool,
 ) -> None:
     B, H = get_num_elements_and_hidden_size(x)
     I = down_weight.size(1)
 
-    if atomic_add:
-        GRID = lambda meta: (ceil_divide(B, meta["BLOCK_SIZE_B"]) * ceil_divide(I, meta["BLOCK_SIZE_I"]),)
-    else:
-        GRID = lambda meta: (ceil_divide(B, meta["BLOCK_SIZE_B"]),)
+    GRID = lambda meta: (ceil_divide(B, meta["BLOCK_SIZE_B"]),)
 
     with torch.device(x.device):
         fused_swiglu_forward_triton_kernel[GRID](
@@ -138,6 +121,6 @@ def fused_swiglu_forward_triton(
             B=B,
             H=H,
             I=I,
-            ATOMIC_ADD=atomic_add,
+            BLOCK_SIZE_I=I,
             MEMORY_EFFICIENT=memory_efficient,
         )

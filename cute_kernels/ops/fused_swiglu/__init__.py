@@ -21,14 +21,8 @@ class _FusedSwiglu_Cute(torch.autograd.Function):
         up_weight: torch.Tensor,
         down_weight: torch.Tensor,
         memory_efficient: bool,
-        atomic_add: bool,
     ) -> torch.Tensor:
-
-        if atomic_add:
-            output = torch.zeros_like(x, dtype=torch.float32 if x.dtype == torch.bfloat16 else x.dtype)
-        else:
-            output = torch.empty_like(x, dtype=x.dtype)
-
+        output = torch.empty_like(x, dtype=x.dtype)
         gate = None if memory_efficient else torch.empty(x.size(0), up_weight.size(0), device=x.device, dtype=x.dtype)
         up = None if memory_efficient else torch.empty(x.size(0), up_weight.size(0), device=x.device, dtype=x.dtype)
 
@@ -41,7 +35,6 @@ class _FusedSwiglu_Cute(torch.autograd.Function):
             up=up,
             output=output,
             memory_efficient=memory_efficient,
-            atomic_add=atomic_add,
         )
 
         ctx.save_for_backward(up_weight, gate_weight, down_weight, gate, up)
@@ -58,14 +51,13 @@ def fused_swiglu_cute(
     up_weight: torch.Tensor,
     down_weight: torch.Tensor,
     memory_efficient: bool = False,
-    atomic_add: bool = True,
     *,
     kernel_backend_forward: KernelBackend = KernelBackend.triton,
     kernel_backend_backward: KernelBackend = KernelBackend.triton,
 ) -> torch.Tensor:
     if kernel_backend_forward == KernelBackend.triton:
         assert kernel_backend_backward == KernelBackend.triton
-        x = _FusedSwiglu_Cute.apply(x, gate_weight, up_weight, down_weight, memory_efficient, atomic_add)
+        x = _FusedSwiglu_Cute.apply(x, gate_weight, up_weight, down_weight, memory_efficient)
     elif kernel_backend_forward == KernelBackend.torch:
         assert kernel_backend_backward == KernelBackend.torch
         assert not memory_efficient

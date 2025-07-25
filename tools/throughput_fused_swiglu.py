@@ -19,7 +19,7 @@ kernels = [
     partial(
         fused_swiglu_cute, kernel_backend_forward=KernelBackend.torch, kernel_backend_backward=KernelBackend.torch
     ),
-    partial(fused_swiglu_cute, atomic_add=False),
+    fused_swiglu_cute,
 ]
 
 table = []
