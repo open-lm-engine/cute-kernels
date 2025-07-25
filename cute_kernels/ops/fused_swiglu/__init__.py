@@ -26,8 +26,8 @@ class _FusedSwiglu_Cute(torch.autograd.Function):
         dtype = torch.float32 if x.dtype == torch.bfloat16 else x.dtype
 
         output = (torch.zeros_like if atomic_add else torch.empty_like)(x, dtype=dtype)
-        gate = None if memory_efficient else torch.empty(x.size(0), up_weight.size(0), device=x.device, dtype=dtype)
-        up = None if memory_efficient else torch.empty(x.size(0), up_weight.size(0), device=x.device, dtype=dtype)
+        gate = None if memory_efficient else torch.empty(x.size(0), up_weight.size(0), device=x.device, dtype=x.dtype)
+        up = None if memory_efficient else torch.empty(x.size(0), up_weight.size(0), device=x.device, dtype=x.dtype)
 
         fused_swiglu_forward_triton(
             x=x,
