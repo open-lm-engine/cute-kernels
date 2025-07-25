@@ -31,7 +31,6 @@ class FusedSwiGLUTest(TestCommons):
         device: torch.device,
         dtype: torch.dtype,
         memory_efficient: bool,
-        atomic_add: bool,
         function: Callable,
     ) -> None:
         set_seed(_SEED)
