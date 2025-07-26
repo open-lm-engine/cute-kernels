@@ -21,18 +21,22 @@ def _get_autotune_configs() -> list[triton.Config]:
             for BLOCK_SIZE_H_DOWN in get_powers_of_2(16, 256):
                 for NUM_STAGES_UP in get_powers_of_2(1, 4):
                     for NUM_STAGES_DOWN in get_powers_of_2(1, 4):
-                        configs.append(
-                            triton.Config(
-                                {
-                                    "BLOCK_SIZE_B": BLOCK_SIZE_B,
-                                    "BLOCK_SIZE_H_UP": BLOCK_SIZE_H_UP,
-                                    "BLOCK_SIZE_H_DOWN": BLOCK_SIZE_H_DOWN,
-                                    "NUM_STAGES_UP": NUM_STAGES_UP,
-                                    "NUM_STAGES_DOWN": NUM_STAGES_DOWN,
-                                },
-                                num_warps=8,
+                        if (
+                            BLOCK_SIZE_B * BLOCK_SIZE_H_UP * NUM_STAGES_UP * 4 <= 262144
+                            and BLOCK_SIZE_B * BLOCK_SIZE_H_DOWN * NUM_STAGES_DOWN * 2 <= 262144
+                        ):
+                            configs.append(
+                                triton.Config(
+                                    {
+                                        "BLOCK_SIZE_B": BLOCK_SIZE_B,
+                                        "BLOCK_SIZE_H_UP": BLOCK_SIZE_H_UP,
+                                        "BLOCK_SIZE_H_DOWN": BLOCK_SIZE_H_DOWN,
+                                        "NUM_STAGES_UP": NUM_STAGES_UP,
+                                        "NUM_STAGES_DOWN": NUM_STAGES_DOWN,
+                                    },
+                                    num_warps=8,
+                                )
                             )
-                        )
 
     return configs
 
