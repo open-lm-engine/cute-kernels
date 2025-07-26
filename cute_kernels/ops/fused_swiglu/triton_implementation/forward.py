@@ -19,17 +19,20 @@ def _get_autotune_configs() -> list[triton.Config]:
     for BLOCK_SIZE_B in get_powers_of_2(64, 64):
         for BLOCK_SIZE_H_UP in get_powers_of_2(16, 256):
             for BLOCK_SIZE_H_DOWN in get_powers_of_2(16, 256):
-                configs.append(
-                    triton.Config(
-                        {
-                            "BLOCK_SIZE_B": BLOCK_SIZE_B,
-                            "BLOCK_SIZE_H_UP": BLOCK_SIZE_H_UP,
-                            "BLOCK_SIZE_H_DOWN": BLOCK_SIZE_H_DOWN,
-                        },
-                        num_warps=8,
-                        num_stages=1,
-                    )
-                )
+                for NUM_STAGES_UP in get_powers_of_2(1, 4):
+                    for NUM_STAGES_DOWN in get_powers_of_2(1, 4):
+                        configs.append(
+                            triton.Config(
+                                {
+                                    "BLOCK_SIZE_B": BLOCK_SIZE_B,
+                                    "BLOCK_SIZE_H_UP": BLOCK_SIZE_H_UP,
+                                    "BLOCK_SIZE_H_DOWN": BLOCK_SIZE_H_DOWN,
+                                    "NUM_STAGES_UP": NUM_STAGES_UP,
+                                    "NUM_STAGES_DOWN": NUM_STAGES_DOWN,
+                                },
+                                num_warps=8,
+                            )
+                        )
 
     return configs
 
@@ -52,6 +55,8 @@ def fused_swiglu_forward_triton_kernel(
     BLOCK_SIZE_H_DOWN: tl.constexpr,
     BLOCK_SIZE_I: tl.constexpr,
     MEMORY_EFFICIENT: tl.constexpr,
+    NUM_STAGES_UP: tl.constexpr,
+    NUM_STAGES_DOWN: tl.constexpr,
 ):
     BLOCK_ID = tl.program_id(axis=0)
 
@@ -64,7 +69,7 @@ def fused_swiglu_forward_triton_kernel(
     u = tl.zeros((BLOCK_SIZE_B, BLOCK_SIZE_I), dtype=tl.float32)
     g = tl.zeros((BLOCK_SIZE_B, BLOCK_SIZE_I), dtype=tl.float32)
 
-    for h in range(tl.cdiv(H, BLOCK_SIZE_H_UP)):
+    for h in tl.range(tl.cdiv(H, BLOCK_SIZE_H_UP), num_stages=NUM_STAGES_UP):
         indices_h = h * BLOCK_SIZE_H_UP + tl.arange(0, BLOCK_SIZE_H_UP)
         mask_h = indices_h < H
 
@@ -91,7 +96,7 @@ def fused_swiglu_forward_triton_kernel(
     z = u * g * sigmoid(g)
     z = z.to(x_ptr.dtype.element_ty)
 
-    for h in range(tl.cdiv(H, BLOCK_SIZE_H_DOWN)):
+    for h in tl.range(tl.cdiv(H, BLOCK_SIZE_H_DOWN), num_stages=NUM_STAGES_DOWN):
         indices_h = h * BLOCK_SIZE_H_DOWN + tl.arange(0, BLOCK_SIZE_H_DOWN)
         mask_h = indices_h < H
 
