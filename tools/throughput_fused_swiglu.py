@@ -19,7 +19,7 @@ kernels = [
     partial(
         fused_swiglu_cute, kernel_backend_forward=KernelBackend.torch, kernel_backend_backward=KernelBackend.torch
     ),
-    fused_swiglu_cute,
+    partial(fused_swiglu_cute, memory_efficient=True),
 ]
 
 table = []
@@ -34,8 +34,9 @@ _Wu = torch.randn(I, H, device=torch.cuda.current_device(), dtype=torch.float32)
 _Wg = torch.randn(I, H, device=torch.cuda.current_device(), dtype=torch.float32)
 _Wd = torch.randn(H, I, device=torch.cuda.current_device(), dtype=torch.float32)
 
+
 with torch.no_grad():
-    for dtype in [torch.float16, torch.bfloat16, torch.float32]:
+    for dtype in [torch.float16, torch.bfloat16]:
         x = _x.to(dtype)
         Wu = _Wu.to(dtype)
         Wg = _Wg.to(dtype)

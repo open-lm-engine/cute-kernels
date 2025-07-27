@@ -9,39 +9,27 @@ import triton.language as tl
 from torch.library import custom_op
 
 from ....constants import LIBRARY_NAME
-from ....math import ceil_divide, get_powers_of_2
+from ....math import ceil_divide
 from ....triton_math import matmul, sigmoid
 from ....utils import get_num_elements_and_hidden_size
 
 
-def _get_autotune_configs() -> list[triton.Config]:
-    configs = []
-    for BLOCK_SIZE_B in get_powers_of_2(64, 64):
-        for BLOCK_SIZE_H_UP in get_powers_of_2(16, 256):
-            for BLOCK_SIZE_H_DOWN in get_powers_of_2(16, 256):
-                for NUM_STAGES_UP in get_powers_of_2(1, 4):
-                    for NUM_STAGES_DOWN in get_powers_of_2(1, 4):
-                        if (
-                            BLOCK_SIZE_B * BLOCK_SIZE_H_UP * NUM_STAGES_UP * 4 <= 262144
-                            and BLOCK_SIZE_B * BLOCK_SIZE_H_DOWN * NUM_STAGES_DOWN * 2 <= 262144
-                        ):
-                            configs.append(
-                                triton.Config(
-                                    {
-                                        "BLOCK_SIZE_B": BLOCK_SIZE_B,
-                                        "BLOCK_SIZE_H_UP": BLOCK_SIZE_H_UP,
-                                        "BLOCK_SIZE_H_DOWN": BLOCK_SIZE_H_DOWN,
-                                        "NUM_STAGES_UP": NUM_STAGES_UP,
-                                        "NUM_STAGES_DOWN": NUM_STAGES_DOWN,
-                                    },
-                                    num_warps=8,
-                                )
-                            )
-
-    return configs
-
-
-@triton.autotune(configs=_get_autotune_configs(), key=["MEMORY_EFFICIENT"])
+@triton.autotune(
+    configs=[
+        triton.Config(
+            {
+                "BLOCK_SIZE_B": 64,
+                "BLOCK_SIZE_H_UP": 64,
+                "BLOCK_SIZE_H_DOWN": 64,
+                "NUM_STAGES_UP": 3,
+                "NUM_STAGES_DOWN": 4,
+            },
+            num_warps=8,
+            num_stages=4,
+        )
+    ],
+    key=["MEMORY_EFFICIENT"],
+)
 @triton.jit
 def fused_swiglu_forward_triton_kernel(
     x_ptr,
