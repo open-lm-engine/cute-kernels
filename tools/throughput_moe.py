@@ -51,7 +51,7 @@ with torch.inference_mode():
     for dtype in [torch.bfloat16]:
         row = [str(dtype)]
         for kernel in kernels:
-            x = torch.randn(8, 4096, 4096, device=torch.cuda.current_device(), dtype=dtype)
+            x = torch.randn(8, 4096, 1536, device=torch.cuda.current_device(), dtype=dtype)
 
             for i in range(n):
                 z = kernel(x)
