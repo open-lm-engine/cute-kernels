@@ -29,12 +29,12 @@ with torch.device(torch.cuda.current_device()):
 
 headers = [
     "dtype",
-    "torch TFLOPs",
-    "torch compile TFLOPs",
-    "scattermoe TFLOPs",
-    "scattermoe compile TFLOPs",
-    "grouped gemm TFLOPs",
-    "grouped gemm compile TFLOPs",
+    "torch msec",
+    "torch compile msec",
+    "scattermoe msec",
+    "scattermoe compile msec",
+    "grouped gemm msec",
+    "grouped gemm compile msec",
 ]
 kernels = [
     partial(moe, kernel_backend=KernelBackend.torch),
@@ -67,7 +67,7 @@ with torch.inference_mode():
             device_synchronize()
 
             t = s.elapsed_time(e) / n / 1e3
-            row.append(2 * x.size(0) * x.size(1) * w.size(0) / t / 1e12)
+            row.append(t)
 
         table.append(row)
 
