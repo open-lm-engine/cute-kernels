@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from tabulate import tabulate
 
-from cute_kernels import KernelBackend, MoE, device_synchronize
+from cute_kernels import KernelBackend, MoE, device_synchronize, swiglu_packed_cute
 
 
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -22,7 +22,7 @@ with torch.device(torch.cuda.current_device()):
         num_experts_per_tok=8,
         hidden_size=1536,
         intermediate_size=512,
-        activation_function=lambda x, y: x * F.silu(y),
+        activation_function=swiglu_packed_cute,
         is_glu=True,
         add_bias=False,
         std=1,
