@@ -5,10 +5,18 @@
 from functools import partial
 
 import torch
-import torch.nn.functional as F
 from tabulate import tabulate
 
 from cute_kernels import KernelBackend, MoE, device_synchronize, swiglu_packed_cute
+
+
+torch_profiler = torch.profiler.profile(
+    activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+    schedule=torch.profiler.schedule(wait=5, warmup=5, active=1, repeat=1),
+    on_trace_ready=torch.profiler.tensorboard_trace_handler("tmp"),
+    record_shapes=True,
+    profile_memory=True,
+)
 
 
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -37,11 +45,8 @@ headers = [
     "grouped gemm compile msec",
 ]
 kernels = [
-    partial(moe, kernel_backend=KernelBackend.torch),
     partial(torch.compile(moe), kernel_backend=KernelBackend.torch),
-    partial(moe, kernel_backend=KernelBackend.triton),
     partial(torch.compile(moe), kernel_backend=KernelBackend.triton),
-    partial(moe, kernel_backend=KernelBackend.cuda),
     partial(torch.compile(moe), kernel_backend=KernelBackend.cuda),
 ]
 
@@ -54,6 +59,7 @@ with torch.inference_mode():
 
         for i in range(n):
             z = kernel(x)
+            torch_profiler.step()
 
         s = torch.cuda.Event(enable_timing=True)
         e = torch.cuda.Event(enable_timing=True)
