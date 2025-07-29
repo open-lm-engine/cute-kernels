@@ -47,29 +47,28 @@ kernels = [
 
 table = []
 
-for dtype in [torch.bfloat16]:
-    row = [str(dtype)]
-    for kernel in kernels:
-        x = torch.randn(4096, 4096, device=torch.cuda.current_device(), dtype=dtype)
-        w = torch.randn(4096, 4096, device=torch.cuda.current_device(), dtype=dtype)
+with torch.inference_mode():
+    for dtype in [torch.bfloat16]:
+        row = [str(dtype)]
+        for kernel in kernels:
+            x = torch.randn(8, 4096, 4096, device=torch.cuda.current_device(), dtype=dtype)
 
-        for i in range(n):
-            z = kernel(x, w, C=None, beta=0)
+            for i in range(n):
+                z = kernel(x)
 
-        s = torch.cuda.Event(enable_timing=True)
-        e = torch.cuda.Event(enable_timing=True)
+            s = torch.cuda.Event(enable_timing=True)
+            e = torch.cuda.Event(enable_timing=True)
 
-        s.record()
-        for i in range(n):
-            z = kernel(x, w, C=None, beta=0)
-        e.record()
+            s.record()
+            for i in range(n):
+                z = kernel(x)
+            e.record()
 
-        device_synchronize()
+            device_synchronize()
 
-        t = s.elapsed_time(e) / n / 1e3
-        row.append(2 * x.size(0) * x.size(1) * w.size(0) / t / 1e12)
+            t = s.elapsed_time(e) / n / 1e3
+            row.append(2 * x.size(0) * x.size(1) * w.size(0) / t / 1e12)
 
-    table.append(row)
+        table.append(row)
 
-
-print(tabulate(table, headers=headers))
+    print(tabulate(table, headers=headers))
