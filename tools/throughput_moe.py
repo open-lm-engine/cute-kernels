@@ -14,6 +14,7 @@ from cute_kernels import KernelBackend, MoE, device_synchronize
 torch.backends.cuda.matmul.allow_tf32 = True
 
 n = 100
+dtype = torch.bfloat16
 
 with torch.device(torch.cuda.current_device()):
     moe = MoE(
@@ -25,7 +26,7 @@ with torch.device(torch.cuda.current_device()):
         is_glu=True,
         add_bias=False,
         std=1,
-    ).to(torch.bfloat16)
+    ).to(dtype)
 
 headers = [
     "torch msec",
