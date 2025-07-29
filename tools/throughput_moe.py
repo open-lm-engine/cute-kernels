@@ -61,19 +61,19 @@ with torch.inference_mode():
             z = kernel(x)
             torch_profiler.step()
 
-        s = torch.cuda.Event(enable_timing=True)
-        e = torch.cuda.Event(enable_timing=True)
+#         s = torch.cuda.Event(enable_timing=True)
+#         e = torch.cuda.Event(enable_timing=True)
 
-        s.record()
-        for i in range(n):
-            z = kernel(x)
-        e.record()
+#         s.record()
+#         for i in range(n):
+#             z = kernel(x)
+#         e.record()
 
-        device_synchronize()
+#         device_synchronize()
 
-        t = s.elapsed_time(e) / n / 1e3
-        row.append(t)
+#         t = s.elapsed_time(e) / n / 1e3
+#         row.append(t)
 
-    table.append(row)
+#     table.append(row)
 
-print(tabulate(table, headers=headers))
+# print(tabulate(table, headers=headers))
