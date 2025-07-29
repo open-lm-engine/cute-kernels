@@ -25,10 +25,9 @@ with torch.device(torch.cuda.current_device()):
         is_glu=True,
         add_bias=False,
         std=1,
-    )
+    ).to(torch.bfloat16)
 
 headers = [
-    "dtype",
     "torch msec",
     "torch compile msec",
     "scattermoe msec",
@@ -48,27 +47,26 @@ kernels = [
 table = []
 
 with torch.inference_mode():
-    for dtype in [torch.bfloat16]:
-        row = [str(dtype)]
-        for kernel in kernels:
-            x = torch.randn(8, 4096, 1536, device=torch.cuda.current_device(), dtype=dtype)
+    row = []
+    for kernel in kernels:
+        x = torch.randn(8, 4096, 1536, device=torch.cuda.current_device(), dtype=dtype)
 
-            for i in range(n):
-                z = kernel(x)
+        for i in range(n):
+            z = kernel(x)
 
-            s = torch.cuda.Event(enable_timing=True)
-            e = torch.cuda.Event(enable_timing=True)
+        s = torch.cuda.Event(enable_timing=True)
+        e = torch.cuda.Event(enable_timing=True)
 
-            s.record()
-            for i in range(n):
-                z = kernel(x)
-            e.record()
+        s.record()
+        for i in range(n):
+            z = kernel(x)
+        e.record()
 
-            device_synchronize()
+        device_synchronize()
 
-            t = s.elapsed_time(e) / n / 1e3
-            row.append(t)
+        t = s.elapsed_time(e) / n / 1e3
+        row.append(t)
 
-        table.append(row)
+    table.append(row)
 
-    print(tabulate(table, headers=headers))
+print(tabulate(table, headers=headers))
